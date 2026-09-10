@@ -40,11 +40,20 @@ async function startWhatsApp() {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startWhatsApp();
         } else if (connection === 'open') {
-            console.log('> [WhatsApp] Conectado y estable.');
+            console.log('¡WhatsApp Conectado y Estable sin Puppeteer!');
         }
     });
 
     waSocket.ev.on('creds.update', saveCreds);
+
+    waSocket.ev.on('messages.upsert', async (chatUpdate) => {
+        try {
+            const m = chatUpdate.messages[0];
+            if (!m || !m.message) return;
+            const remoteJid = m.key.remoteJid;
+            if (!remoteJid || remoteJid.endsWith('@broadcast') || remoteJid === 'status@broadcast') return;
+        } catch (e) {}
+    });
 }
 
 const discordClient = new DiscordClient({
@@ -52,11 +61,13 @@ const discordClient = new DiscordClient({
 });
 
 discordClient.on('ready', () => {
-    console.log(`> [Discord] Conectado como ${discordClient.user.tag}`);
+    console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`);
 });
 
 discordClient.on('messageCreate', async (message) => {
-    if (message.author.bot || message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
+    if (message.author.bot) return;
+    
+    if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
     
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
     if (images.length === 0) return;
@@ -67,7 +78,6 @@ discordClient.on('messageCreate', async (message) => {
             const buffer = await response.buffer();
             const captionText = message.content || '';
 
-            // 1. Reenvío a Discord
             for (const destChannelId of DISCORD_DEST_CHANNELS) {
                 try {
                     const destChannel = await discordClient.channels.fetch(destChannelId);
@@ -79,14 +89,13 @@ discordClient.on('messageCreate', async (message) => {
                 }
             }
 
-            // 2. Reenvío a WhatsApp
             for (const waGroupId of WA_DESTINATION_GROUPS) {
                 try {
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
-                        caption: captionText 
+                        caption: captionText,
+                        mimetype: 'image/jpeg'
                     });
-                    console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                 } catch (err) {
                     console.error(`Error enviando al grupo WhatsApp ${waGroupId}:`, err);
                 }
