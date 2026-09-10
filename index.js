@@ -23,10 +23,7 @@ const waClient = new WAClient({
       '--no-sandbox', 
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process', // <- Este es clave para servidores con recursos limitados como Render
+      '--single-process',
       '--disable-gpu'
     ] 
   }
