@@ -88,16 +88,11 @@ discordClient.on('messageCreate', async (message) => {
 });
 
 waClient.on('message', async (msg) => {
-    // Si el mensaje viene de un grupo, imprime su ID en los logs de Render
     if (msg.from.endsWith('@g.us')) {
         console.log('--------------------------------------------------');
-        console.log(`¡GRUPO DETECTADO! Nombre o ID: ${msg.from}`);
+        console.log(`¡GRUPO DETECTADO! ID: ${msg.from}`);
         console.log('--------------------------------------------------');
     }
-});
-
-waClient.initialize();
-discordClient.login(DISCORD_BOT_TOKEN);
 });
 
 waClient.initialize();
