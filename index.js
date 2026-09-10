@@ -18,7 +18,18 @@ app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
 
 const waClient = new WAClient({
   authStrategy: new LocalAuth(),
-  puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+  puppeteer: { 
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process', // <- Este es clave para servidores con recursos limitados como Render
+      '--disable-gpu'
+    ] 
+  }
 });
 
 waClient.on('qr', (qr) => {
