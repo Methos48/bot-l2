@@ -21,7 +21,8 @@ const waClient = new WAClient({
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--js-flags="--max-old-space-size=256"' // Limita el uso de JS para que no rebase el límite de Render
     ] 
   },
   authTimeoutMs: 60000
