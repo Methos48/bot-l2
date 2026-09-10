@@ -2,7 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
 const fetch = require('node-fetch');
 const express = require('express');
-const qrcode = require('qrcode');
+const pino = require('pino');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -20,6 +20,7 @@ async function startWhatsApp() {
     
     waSocket = makeWASocket({
         auth: state,
+        logger: pino({ level: 'silent' }), // Oculta logs excesivos para mantener limpio
         printQRInTerminal: false
     });
 
@@ -40,6 +41,16 @@ async function startWhatsApp() {
     });
 
     waSocket.ev.on('creds.update', saveCreds);
+
+    // Detector de ID de grupos al recibir mensajes
+    waSocket.ev.on('messages.upsert', async ({ messages }) => {
+        const m = messages[0];
+        if (!m.message) return;
+        const remoteJid = m.key.remoteJid;
+        if (remoteJid && remoteJid.endsWith('@g.us')) {
+            console.log(`[GRUPO DETECTADO] ID del Grupo: ${remoteJid}`);
+        }
+    });
 }
 
 const discordClient = new DiscordClient({
