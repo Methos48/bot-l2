@@ -1,9 +1,8 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
 const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
 const express = require('express');
-const pino = require('pino');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -23,46 +22,30 @@ const WA_DESTINATION_GROUPS = [
     process.env.WA_GROUP_ID_2
 ].filter(Boolean);
 
-let waSocket;
+// Inicializar WhatsApp con la configuración clásica de Puppeteer
+const waClient = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    }
+});
 
-async function startWhatsApp() {
-    console.log('> [WhatsApp] Iniciando sesión...');
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-    
-    waSocket = makeWASocket({
-        auth: state,
-        logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
-        syncFullHistory: false
-    });
+waClient.on('qr', (qr) => {
+    console.log('Escanea este código QR para WhatsApp:');
+    qrcode.generate(qr, { small: true });
+});
 
-    waSocket.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
+waClient.on('ready', () => {
+    console.log('¡WhatsApp conectado correctamente!');
+});
 
-        // Si WhatsApp genera un QR porque se perdió la sesión, lo dibujamos en la consola de Render
-        if (qr) {
-            console.log('> [WhatsApp] Escanea el siguiente código QR con tu teléfono para vincular el bot:');
-            qrcode.generate(qr, { small: true });
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log(`> [WhatsApp] Conexión cerrada. ¿Reconectar?: ${shouldReconnect}`);
-            if (shouldReconnect) startWhatsApp();
-        } else if (connection === 'open') {
-            console.log('> [WhatsApp] ¡Conectado y 100% estable!');
-        }
-    });
-
-    waSocket.ev.on('creds.update', saveCreds);
-}
-
+// Inicializar Discord
 const discordClient = new DiscordClient({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 discordClient.on('ready', () => {
-    console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`);
+    console.log(`> [Discord] ¡Conectado como ${discordClient.user.tag}!`);
 });
 
 discordClient.on('messageCreate', async (message) => {
@@ -77,7 +60,13 @@ discordClient.on('messageCreate', async (message) => {
             const response = await fetch(img.url);
             const buffer = await response.buffer();
             const captionText = message.content || '';
+            const media = new (require('whatsapp-web.js')).MessageMedia(
+                response.headers.get('content-type') || 'image/jpeg',
+                buffer.toString('base64'),
+                'imagen.jpg'
+            );
 
+            // Reenviar a Discord
             for (const destChannelId of DISCORD_DEST_CHANNELS) {
                 try {
                     const destChannel = await discordClient.channels.fetch(destChannelId);
@@ -85,27 +74,20 @@ discordClient.on('messageCreate', async (message) => {
                         await destChannel.send({ content: captionText, files: [img.url] });
                     }
                 } catch (err) {
-                    console.error(`Error enviando al canal Discord ${destChannelId}:`, err);
+                    console.error(`Error enviando a Discord:`, err);
                 }
             }
 
+            // Reenviar a WhatsApp usando los IDs limpios
             for (const rawWaGroupId of WA_DESTINATION_GROUPS) {
                 try {
                     const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
                     const waGroupId = `${cleanNumbers}@g.us`;
 
-                    if (!waSocket) continue;
-
-                    await waSocket.sendMessage(waGroupId, { 
-                        image: buffer, 
-                        caption: captionText 
-                    }, { 
-                        quoted: undefined 
-                    });
-                    
-                    console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
+                    await waClient.sendMessage(waGroupId, media, { caption: captionText });
+                    console.log(`> [WhatsApp] Imagen enviada al grupo ${waGroupId}`);
                 } catch (err) {
-                    console.error(`Error enviando al grupo WhatsApp ${rawWaGroupId}:`, err);
+                    console.error(`Error enviando a WhatsApp:`, err);
                 }
             }
         } catch (err) { 
@@ -114,5 +96,5 @@ discordClient.on('messageCreate', async (message) => {
     }
 });
 
-startWhatsApp();
+waClient.initialize();
 discordClient.login(DISCORD_BOT_TOKEN);
