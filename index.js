@@ -14,7 +14,6 @@ const WA_GROUP_ID_2 = process.env.WA_GROUP_ID_2;
 const waClient = new WAClient({
   authStrategy: new LocalAuth(),
   puppeteer: { 
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
@@ -23,7 +22,10 @@ const waClient = new WAClient({
       '--no-first-run',
       '--no-zygote',
       '--disable-gpu',
-      '--disable-software-rasterizer'
+      '--disable-extensions',
+      '--disable-infobars',
+      '--hide-scrollbars',
+      '--mute-audio'
     ] 
   },
   authTimeoutMs: 60000
