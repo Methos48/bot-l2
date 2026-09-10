@@ -11,22 +11,22 @@ const DISCORD_WEBHOOK_2 = process.env.DISCORD_WEBHOOK_2;
 const WA_GROUP_ID_1 = process.env.WA_GROUP_ID_1;
 const WA_GROUP_ID_2 = process.env.WA_GROUP_ID_2;
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot Activo'));
-app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
-
 const waClient = new WAClient({
   authStrategy: new LocalAuth(),
   puppeteer: { 
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-software-rasterizer'
     ] 
   },
-  authTimeoutMs: 60000 // Da 60 segundos de margen para escanear y conectar sin que expire
+  authTimeoutMs: 60000
 });
 
 waClient.on('qr', (qr) => {
