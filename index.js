@@ -20,7 +20,7 @@ async function startWhatsApp() {
     
     waSocket = makeWASocket({
         auth: state,
-        logger: pino({ level: 'silent' }), // Oculta logs excesivos para mantener limpio
+        logger: pino({ level: 'silent' }),
         printQRInTerminal: false
     });
 
@@ -42,13 +42,22 @@ async function startWhatsApp() {
 
     waSocket.ev.on('creds.update', saveCreds);
 
-    // Detector de ID de grupos al recibir mensajes
-    waSocket.ev.on('messages.upsert', async ({ messages }) => {
-        const m = messages[0];
-        if (!m.message) return;
-        const remoteJid = m.key.remoteJid;
-        if (remoteJid && remoteJid.endsWith('@g.us')) {
-            console.log(`[GRUPO DETECTADO] ID del Grupo: ${remoteJid}`);
+    // Detector mejorado de mensajes y grupos
+    waSocket.ev.on('messages.upsert', async (chatUpdate) => {
+        try {
+            const m = chatUpdate.messages[0];
+            if (!m || !m.message) return;
+            
+            const remoteJid = m.key.remoteJid;
+            console.log(`[MENSAJE RECIBIDO] De: ${remoteJid}`);
+            
+            if (remoteJid && remoteJid.endsWith('@g.us')) {
+                console.log('==================================================');
+                console.log(`¡ID DE GRUPO ENCONTRADO!: ${remoteJid}`);
+                console.log('==================================================');
+            }
+        } catch (e) {
+            console.error("Error leyendo mensaje:", e);
         }
     });
 }
