@@ -11,7 +11,17 @@ app.listen(PORT);
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_ORIGIN_CHANNEL_ID = process.env.DISCORD_ORIGIN_CHANNEL_ID;
-const WA_GROUP_ID_1 = process.env.WA_GROUP_ID_1;
+
+// Configuración de múltiples destinos (2 Discord / 2 WhatsApp)
+const DISCORD_DEST_CHANNELS = [
+    process.env.DISCORD_DEST_1_ID,
+    process.env.DISCORD_DEST_2_ID
+].filter(Boolean);
+
+const WA_DESTINATION_GROUPS = [
+    process.env.WA_GROUP_ID_1,
+    process.env.WA_GROUP_ID_2
+].filter(Boolean);
 
 let waSocket;
 
@@ -74,26 +84,49 @@ discordClient.on('ready', () => console.log(`Discord listo: ${discordClient.user
 discordClient.on('messageCreate', async (message) => {
     if (message.author.bot || message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
     
-    console.log(`> [Discord] Mensaje detectado en el canal de origen de L2.`);
+    console.log(`> [Discord] Mensaje detectado en el canal de origen.`);
     
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
-    if (images.length === 0 || !WA_GROUP_ID_1) {
-        console.log(`> [Discord] No se encontraron imágenes o falta configurar WA_GROUP_ID_1.`);
+    if (images.length === 0) {
+        console.log(`> [Discord] No se encontraron imágenes adjuntas.`);
         return;
     }
 
     for (const img of images) {
         try {
-            console.log(`> [Discord] Descargando imagen y enviando a WhatsApp...`);
+            console.log(`> [Puente] Descargando imagen para envío múltiple...`);
             const response = await fetch(img.url);
             const buffer = await response.buffer();
-            await waSocket.sendMessage(WA_GROUP_ID_1, { 
-                image: buffer, 
-                caption: message.content || '' 
-            });
-            console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo!`);
+            const captionText = message.content || '';
+
+            // 1. Enviar a los canales de Discord de destino (Bucle)
+            for (const destChannelId of DISCORD_DEST_CHANNELS) {
+                try {
+                    const destChannel = await discordClient.channels.fetch(destChannelId);
+                    if (destChannel) {
+                        await destChannel.send({ content: captionText, files: [img.url] });
+                        console.log(`> [Discord] ¡Imagen enviada con éxito al canal destino: ${destChannelId}!`);
+                    }
+                } catch (err) {
+                    console.error(`Error enviando imagen al canal de Discord ${destChannelId}:`, err);
+                }
+            }
+
+            // 2. Enviar a los grupos de WhatsApp de destino (Bucle)
+            for (const waGroupId of WA_DESTINATION_GROUPS) {
+                try {
+                    await waSocket.sendMessage(waGroupId, { 
+                        image: buffer, 
+                        caption: captionText 
+                    });
+                    console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo destino: ${waGroupId}!`);
+                } catch (err) {
+                    console.error(`Error enviando imagen al grupo de WhatsApp ${waGroupId}:`, err);
+                }
+            }
+
         } catch (err) { 
-            console.error('Error enviando imagen a WhatsApp:', err); 
+            console.error('Error general procesando imagen en el puente:', err); 
         }
     }
 });
