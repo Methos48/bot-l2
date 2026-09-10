@@ -17,12 +17,12 @@ const waClient = new WAClient({
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage', // Obligatorio para evitar caídas en contenedores Linux
+      '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
       '--disable-gpu',
-      '--single-process' // Mantiene todo en un solo proceso para gastar menos memoria
+      '--disable-features=IsolateOrigins,site-per-process' // Reduce drásticamente el consumo de RAM de Chromium
     ] 
   },
   authTimeoutMs: 60000
