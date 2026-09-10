@@ -1,8 +1,19 @@
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
 const { Client: WAClient, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
 const express = require('express');
+
+// Configuración del servidor Express para cumplir con el puerto de Render
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+  res.send('Bot de Lineage II Activo y Operativo 🚀');
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor en puerto ${PORT}`);
+});
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_ORIGIN_CHANNEL_ID = process.env.DISCORD_ORIGIN_CHANNEL_ID;
@@ -22,7 +33,7 @@ const waClient = new WAClient({
       '--no-first-run',
       '--no-zygote',
       '--disable-gpu',
-      '--disable-features=IsolateOrigins,site-per-process' // Reduce drásticamente el consumo de RAM de Chromium
+      '--disable-features=IsolateOrigins,site-per-process'
     ] 
   },
   authTimeoutMs: 60000
@@ -74,6 +85,10 @@ discordClient.on('messageCreate', async (message) => {
       if (WA_GROUP_ID_2) await waClient.sendMessage(WA_GROUP_ID_2, media, { caption: captionText });
     } catch (err) { console.error('Error WhatsApp:', err); }
   }
+});
+
+waClient.initialize();
+discordClient.login(DISCORD_BOT_TOKEN);
 });
 
 waClient.initialize();
