@@ -94,17 +94,14 @@ discordClient.on('messageCreate', async (message) => {
                     const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
                     const waGroupId = `${cleanNumbers}@g.us`;
 
-                    // Forzamos a Baileys a cargar el grupo en memoria para evitar el error 'id de undefined'
-                    try {
-                        await waSocket.groupMetadata(waGroupId);
-                    } catch (e) {
-                        // Si falla la precarga, intentamos continuar de todas formas
-                    }
-
+                    // Usamos un objeto de reenvío directo evitando validaciones de caché de chats
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
                         caption: captionText 
+                    }, { 
+                        quoted: undefined 
                     });
+                    
                     console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                 } catch (err) {
                     console.error(`Error enviando al grupo WhatsApp ${rawWaGroupId}:`, err);
