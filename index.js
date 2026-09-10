@@ -51,15 +51,6 @@ async function startWhatsApp() {
     });
 
     waSocket.ev.on('creds.update', saveCreds);
-
-    waSocket.ev.on('messages.upsert', async (chatUpdate) => {
-        try {
-            const m = chatUpdate.messages[0];
-            if (!m || !m.message) return;
-            const remoteJid = m.key.remoteJid;
-            if (!remoteJid || remoteJid.endsWith('@broadcast') || remoteJid === 'status@broadcast') return;
-        } catch (e) {}
-    });
 }
 
 const discordClient = new DiscordClient({
@@ -71,50 +62,42 @@ discordClient.on('ready', () => {
 });
 
 discordClient.on('messageCreate', async (message) => {
-    // CHIVATO DE DEPURACIÓN: Esto imprimirá CUALQUIER mensaje en CUALQUIER canal
-    console.log(`> [Discord Monitor] Mensaje visto en canal ID: [${message.channel.id}] de ${message.author.tag}: "${message.content}"`);
+    // 1. IGNORAR mensajes de nuestro propio bot o de cualquier otro bot para evitar bucles
+    if (message.author.id === discordClient.user.id || message.author.bot) return;
 
-    if (message.author.bot) return;
-    
-    if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) {
-        console.log(`> [Discord] El canal ${message.channel.id} no coincide con el origen configurado (${DISCORD_ORIGIN_CHANNEL_ID}).`);
-        return;
-    }
-    
-    console.log(`> [Discord] ¡Coincide el canal de origen! Buscando imágenes...`);
+    if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
     
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
-    if (images.length === 0) {
-        console.log(`> [Discord] El mensaje llegó al canal correcto, pero no contiene imágenes.`);
-        return;
-    }
+    if (images.length === 0) return;
+
+    console.log(`> [Discord] Imagen detectada en el canal de origen. Procesando...`);
 
     for (const img of images) {
         try {
-            console.log(`> [Puente] Procesando imagen...`);
             const response = await fetch(img.url);
             const buffer = await response.buffer();
             const captionText = message.content || '';
 
+            // Reenviar a canales de Discord destino
             for (const destChannelId of DISCORD_DEST_CHANNELS) {
                 try {
                     const destChannel = await discordClient.channels.fetch(destChannelId);
                     if (destChannel) {
                         await destChannel.send({ content: captionText, files: [img.url] });
-                        console.log(`> [Discord] ¡Enviado al canal destino ${destChannelId}!`);
                     }
                 } catch (err) {
                     console.error(`Error enviando al canal Discord ${destChannelId}:`, err);
                 }
             }
 
+            // Reenviar a grupos de WhatsApp
             for (const waGroupId of WA_DESTINATION_GROUPS) {
                 try {
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
                         caption: captionText 
                     });
-                    console.log(`> [WhatsApp] ¡Enviado al grupo destino ${waGroupId}!`);
+                    console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                 } catch (err) {
                     console.error(`Error enviando al grupo WhatsApp ${waGroupId}:`, err);
                 }
