@@ -21,11 +21,7 @@ const waClient = new WAClient({
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--disable-infobars',
-      '--hide-scrollbars',
-      '--mute-audio'
+      '--disable-gpu'
     ] 
   },
   authTimeoutMs: 60000
