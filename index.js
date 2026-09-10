@@ -43,17 +43,24 @@ async function startWhatsApp() {
 
     waSocket.ev.on('creds.update', saveCreds);
 
+    // Depuración total: imprime el ID exacto de cualquier mensaje entrante
     waSocket.ev.on('messages.upsert', async (chatUpdate) => {
         try {
             const m = chatUpdate.messages[0];
             if (!m || !m.message) return;
             
             const remoteJid = m.key.remoteJid;
-            console.log(`[MENSAJE RECIBIDO] De: ${remoteJid}`);
+            const sender = m.key.participant || remoteJid;
+            
+            console.log('--------------------------------------------------');
+            console.log(`> MENSAJE DETECTADO`);
+            console.log(`> JID del Chat / Grupo: ${remoteJid}`);
+            console.log(`> Enviado por: ${sender}`);
+            console.log('--------------------------------------------------');
             
             if (remoteJid && remoteJid.endsWith('@g.us')) {
                 console.log('==================================================');
-                console.log(`¡ID DE GRUPO ENCONTRADO!: ${remoteJid}`);
+                console.log(`¡ID DE GRUPO ENCONTRADO PARA COPIAR!: ${remoteJid}`);
                 console.log('==================================================');
             }
         } catch (e) {
