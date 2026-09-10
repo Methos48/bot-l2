@@ -22,7 +22,7 @@ const WA_GROUP_ID_1 = process.env.WA_GROUP_ID_1;
 const WA_GROUP_ID_2 = process.env.WA_GROUP_ID_2;
 
 const waClient = new WAClient({
-  authStrategy: new LocalAuth(),
+  authStrategy: new LocalAuth({ clientId: 'l2-bot-session' }),
   puppeteer: { 
     args: [
       '--no-sandbox', 
