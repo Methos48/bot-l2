@@ -17,12 +17,12 @@ const waClient = new WAClient({
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
+      '--disable-dev-shm-usage', // Obligatorio para evitar caídas en contenedores Linux
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
       '--disable-gpu',
-      '--js-flags="--max-old-space-size=256"' // Limita el uso de JS para que no rebase el límite de Render
+      '--single-process' // Mantiene todo en un solo proceso para gastar menos memoria
     ] 
   },
   authTimeoutMs: 60000
