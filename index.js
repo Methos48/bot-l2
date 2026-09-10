@@ -68,43 +68,82 @@ discordClient.on('messageCreate', async (message) => {
     if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
     
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
-    if (images.length === 0) return;
+    const hasText = message.content && message.content.trim().length > 0;
 
-    console.log(`> [Discord] Imagen detectada en el canal de origen. Procesando...`);
+    // Si no tiene ni imágenes ni texto, no hacemos nada
+    if (images.length === 0 && !hasText) return;
 
-    for (const img of images) {
-        try {
-            const response = await fetch(img.url);
-            const buffer = await response.buffer();
-            const captionText = message.content || '';
+    const captionText = message.content || '';
 
-            // Reenviar a canales de Discord destino
-            for (const destChannelId of DISCORD_DEST_CHANNELS) {
-                try {
-                    const destChannel = await discordClient.channels.fetch(destChannelId);
-                    if (destChannel) {
-                        await destChannel.send({ content: captionText, files: [img.url] });
+    // ==========================================
+    // CASO A: EL MENSAJE TIENE IMÁGENES
+    // ==========================================
+    if (images.length > 0) {
+        console.log(`> [Discord] Imagen(es) detectada(s) en el canal de origen. Procesando...`);
+
+        for (const img of images) {
+            try {
+                const response = await fetch(img.url);
+                const buffer = await response.buffer();
+
+                // Reenviar a canales de Discord destino
+                for (const destChannelId of DISCORD_DEST_CHANNELS) {
+                    try {
+                        const destChannel = await discordClient.channels.fetch(destChannelId);
+                        if (destChannel) {
+                            await destChannel.send({ content: captionText, files: [img.url] });
+                        }
+                    } catch (err) {
+                        console.error(`Error enviando imagen al canal Discord ${destChannelId}:`, err);
                     }
-                } catch (err) {
-                    console.error(`Error enviando al canal Discord ${destChannelId}:`, err);
                 }
-            }
 
-            // Reenviar a grupos de WhatsApp
-            for (const waGroupId of WA_DESTINATION_GROUPS) {
-                try {
-                    await waSocket.sendMessage(waGroupId, { 
-                        image: buffer, 
-                        caption: captionText 
-                    });
-                    console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
-                } catch (err) {
-                    console.error(`Error enviando al grupo WhatsApp ${waGroupId}:`, err);
+                // Reenviar a grupos de WhatsApp
+                for (const waGroupId of WA_DESTINATION_GROUPS) {
+                    try {
+                        await waSocket.sendMessage(waGroupId, { 
+                            image: buffer, 
+                            caption: captionText 
+                        });
+                        console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
+                    } catch (err) {
+                        console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
+                    }
                 }
-            }
 
-        } catch (err) { 
-            console.error('Error procesando imagen:', err); 
+            } catch (err) { 
+                console.error('Error procesando imagen:', err); 
+            }
+        }
+    } 
+    // ==========================================
+    // CASO B: EL MENSAJE ES SOLO TEXTO PLANO
+    // ==========================================
+    else if (hasText) {
+        console.log(`> [Discord] Texto detectado en el canal de origen. Procesando...`);
+
+        // Reenviar texto a canales de Discord destino
+        for (const destChannelId of DISCORD_DEST_CHANNELS) {
+            try {
+                const destChannel = await discordClient.channels.fetch(destChannelId);
+                if (destChannel) {
+                    await destChannel.send({ content: captionText });
+                }
+            } catch (err) {
+                console.error(`Error enviando texto al canal Discord ${destChannelId}:`, err);
+            }
+        }
+
+        // Reenviar texto a grupos de WhatsApp
+        for (const waGroupId of WA_DESTINATION_GROUPS) {
+            try {
+                await waSocket.sendMessage(waGroupId, { 
+                    text: captionText 
+                });
+                console.log(`> [WhatsApp] ¡Texto enviado con éxito al grupo ${waGroupId}!`);
+            } catch (err) {
+                console.error(`Error enviando texto al grupo WhatsApp ${waGroupId}:`, err);
+            }
         }
     }
 });
