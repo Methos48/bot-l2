@@ -46,8 +46,16 @@ waClient.on('qr', (qr) => {
     console.log('==================================================');
 });
 
+waClient.on('authenticated', () => {
+    console.log('¡WhatsApp Autenticado Correctamente en el dispositivo!');
+});
+
+waClient.on('auth_failure', (msg) => {
+    console.error('Fallo de autenticación en WhatsApp:', msg);
+});
+
 waClient.on('ready', () => {
-    console.log('¡WhatsApp Conectado exitosamente!');
+    console.log('¡WhatsApp Conectado y Listo para transmitir!');
 });
 
 const discordClient = new DiscordClient({
