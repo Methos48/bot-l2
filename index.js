@@ -22,8 +22,10 @@ const waClient = new WAClient({
 });
 
 waClient.on('qr', (qr) => {
-  console.log('--- CÓDIGO QR DE WHATSAPP ---');
-  qrcode.generate(qr, { small: true });
+    console.log('==================================================');
+    console.log('ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
+    console.log(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`);
+    console.log('==================================================');
 });
 
 waClient.on('ready', () => console.log('¡WhatsApp Conectado!'));
