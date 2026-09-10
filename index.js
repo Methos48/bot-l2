@@ -91,13 +91,9 @@ discordClient.on('messageCreate', async (message) => {
 
             for (const rawWaGroupId of WA_DESTINATION_GROUPS) {
                 try {
-                    // Limpiamos y aseguramos que el JID tenga el formato correcto @g.us
-                    let waGroupId = rawWaGroupId.trim();
-                    if (!waGroupId.includes('@')) {
-                        waGroupId = `${waGroupId}@g.us`;
-                    } else if (waGroupId.endsWith('ag.us')) {
-                        waGroupId = waGroupId.replace('ag.us', '@g.us');
-                    }
+                    // Extraemos SOLO los números del ID y armamos el JID perfecto
+                    const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
+                    const waGroupId = `${cleanNumbers}@g.us`;
 
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
