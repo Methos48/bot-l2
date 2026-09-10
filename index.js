@@ -24,6 +24,7 @@ const WA_GROUP_ID_2 = process.env.WA_GROUP_ID_2;
 const waClient = new WAClient({
   authStrategy: new LocalAuth({ clientId: 'l2-bot-session' }),
   puppeteer: { 
+    headless: true,
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
@@ -33,10 +34,12 @@ const waClient = new WAClient({
       '--no-zygote',
       '--single-process',
       '--disable-gpu',
-      '--disable-features=IsolateOrigins,site-per-process'
+      '--disable-software-rasterizer',
+      '--disable-extensions',
+      '--disable-dev-shm-usage'
     ] 
   },
-  authTimeoutMs: 60000
+  authTimeoutMs: 120000
 });
 
 waClient.on('qr', (qr) => {
@@ -47,7 +50,7 @@ waClient.on('qr', (qr) => {
 });
 
 waClient.on('authenticated', () => {
-    console.log('¡WhatsApp Autenticado Correctamente en el dispositivo!');
+    console.log('¡WhatsApp Autenticado Correctamente!');
 });
 
 waClient.on('auth_failure', (msg) => {
@@ -56,18 +59,17 @@ waClient.on('auth_failure', (msg) => {
 
 waClient.on('ready', async () => {
     console.log('¡WhatsApp Conectado y Listo para transmitir!');
-    
     try {
         const chats = await waClient.getChats();
-        console.log('================ LISTA DE CHATS Y GRUPOS DISPONIBLES ===============');
+        console.log('================ LISTA DE GRUPOS DISPONIBLES ===============');
         chats.forEach(chat => {
             if (chat.isGroup) {
-                console.log(`Nombre del Grupo: ${chat.name} | ID: ${chat.id._serialized}`);
+                console.log(`Nombre: ${chat.name} | ID: ${chat.id._serialized}`);
             }
         });
-        console.log('===================================================================');
+        console.log('===========================================================');
     } catch (err) {
-        console.error('Error al obtener la lista de grupos:', err);
+        console.error('Error al obtener chats:', err);
     }
 });
 
@@ -108,15 +110,6 @@ discordClient.on('messageCreate', async (message) => {
       if (WA_GROUP_ID_2) await waClient.sendMessage(WA_GROUP_ID_2, media, { caption: captionText });
     } catch (err) { console.error('Error WhatsApp:', err); }
   }
-});
-
-waClient.on('message', async (msg) => {
-    console.log(`[MENSAJE RECIBIDO] De: ${msg.from} | Texto: ${msg.body}`);
-    if (msg.from.endsWith('@g.us')) {
-        console.log('--------------------------------------------------');
-        console.log(`¡GRUPO DETECTADO! ID: ${msg.from}`);
-        console.log('--------------------------------------------------');
-    }
 });
 
 waClient.initialize();
