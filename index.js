@@ -89,15 +89,23 @@ discordClient.on('messageCreate', async (message) => {
                 }
             }
 
-            for (const waGroupId of WA_DESTINATION_GROUPS) {
+            for (const rawWaGroupId of WA_DESTINATION_GROUPS) {
                 try {
+                    // Limpiamos y aseguramos que el JID tenga el formato correcto @g.us
+                    let waGroupId = rawWaGroupId.trim();
+                    if (!waGroupId.includes('@')) {
+                        waGroupId = `${waGroupId}@g.us`;
+                    } else if (waGroupId.endsWith('ag.us')) {
+                        waGroupId = waGroupId.replace('ag.us', '@g.us');
+                    }
+
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
-                        caption: captionText,
-                        mimetype: 'image/jpeg'
+                        caption: captionText 
                     });
+                    console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                 } catch (err) {
-                    console.error(`Error enviando al grupo WhatsApp ${waGroupId}:`, err);
+                    console.error(`Error enviando al grupo WhatsApp ${rawWaGroupId}:`, err);
                 }
             }
 
