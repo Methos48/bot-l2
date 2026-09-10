@@ -79,13 +79,12 @@ discordClient.on('messageCreate', async (message) => {
                 }
             }
 
-            // 2. Reenvío a WhatsApp (con el mimetype corregido)
+            // 2. Reenvío a WhatsApp
             for (const waGroupId of WA_DESTINATION_GROUPS) {
                 try {
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
-                        caption: captionText,
-                        mimetype: 'image/jpeg' 
+                        caption: captionText 
                     });
                     console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                 } catch (err) {
