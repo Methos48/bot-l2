@@ -96,7 +96,6 @@ waClient.on('message', async (msg) => {
     }
 });
 
-
 waClient.initialize();
 discordClient.login(DISCORD_BOT_TOKEN);
 });
