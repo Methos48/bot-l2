@@ -19,17 +19,14 @@ app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
 const waClient = new WAClient({
   authStrategy: new LocalAuth(),
   puppeteer: { 
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
       '--disable-gpu'
     ] 
-  }
+  },
+  authTimeoutMs: 60000 // Da 60 segundos de margen para escanear y conectar sin que expire
 });
 
 waClient.on('qr', (qr) => {
