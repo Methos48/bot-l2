@@ -21,7 +21,8 @@ async function startWhatsApp() {
     waSocket = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false
+        printQRInTerminal: false,
+        syncFullHistory: false
     });
 
     waSocket.ev.on('connection.update', async (update) => {
@@ -42,7 +43,6 @@ async function startWhatsApp() {
 
     waSocket.ev.on('creds.update', saveCreds);
 
-    // Detector mejorado de mensajes y grupos
     waSocket.ev.on('messages.upsert', async (chatUpdate) => {
         try {
             const m = chatUpdate.messages[0];
