@@ -32,6 +32,7 @@ const waClient = new WAClient({
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
+      '--single-process', // <-- Este es clave en servidores con poca RAM
       '--disable-gpu',
       '--disable-features=IsolateOrigins,site-per-process'
     ] 
