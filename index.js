@@ -1,5 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
+const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
 const express = require('express');
 const pino = require('pino');
@@ -25,7 +26,7 @@ const WA_DESTINATION_GROUPS = [
 let waSocket;
 
 async function startWhatsApp() {
-    console.log('> [WhatsApp] Iniciando conexión con Baileys...');
+    console.log('> [WhatsApp] Iniciando sesión...');
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     
     waSocket = makeWASocket({
@@ -36,9 +37,14 @@ async function startWhatsApp() {
     });
 
     waSocket.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
-        console.log(`> [WhatsApp Connection Update]:`, update);
-        
+        const { connection, lastDisconnect, qr } = update;
+
+        // Si WhatsApp genera un QR porque se perdió la sesión, lo dibujamos en la consola de Render
+        if (qr) {
+            console.log('> [WhatsApp] Escanea el siguiente código QR con tu teléfono para vincular el bot:');
+            qrcode.generate(qr, { small: true });
+        }
+
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log(`> [WhatsApp] Conexión cerrada. ¿Reconectar?: ${shouldReconnect}`);
@@ -61,7 +67,6 @@ discordClient.on('ready', () => {
 
 discordClient.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-    
     if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
     
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
@@ -69,7 +74,6 @@ discordClient.on('messageCreate', async (message) => {
 
     for (const img of images) {
         try {
-            console.log('> [Discord] Imagen detectada en el canal de origen. Procesando...');
             const response = await fetch(img.url);
             const buffer = await response.buffer();
             const captionText = message.content || '';
@@ -90,10 +94,7 @@ discordClient.on('messageCreate', async (message) => {
                     const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
                     const waGroupId = `${cleanNumbers}@g.us`;
 
-                    if (!waSocket) {
-                        console.error('> [WhatsApp Error] El socket de WhatsApp no está inicializado.');
-                        continue;
-                    }
+                    if (!waSocket) continue;
 
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
@@ -107,7 +108,6 @@ discordClient.on('messageCreate', async (message) => {
                     console.error(`Error enviando al grupo WhatsApp ${rawWaGroupId}:`, err);
                 }
             }
-
         } catch (err) { 
             console.error('Error procesando imagen:', err); 
         }
