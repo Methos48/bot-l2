@@ -43,25 +43,21 @@ async function startWhatsApp() {
 
     waSocket.ev.on('creds.update', saveCreds);
 
-    // Depuración total: imprime el ID exacto de cualquier mensaje entrante
+    // Depuración optimizada: ignora eventos internos y muestra chats limpios
     waSocket.ev.on('messages.upsert', async (chatUpdate) => {
         try {
             const m = chatUpdate.messages[0];
             if (!m || !m.message) return;
             
             const remoteJid = m.key.remoteJid;
+            if (!remoteJid || remoteJid.endsWith('@broadcast') || remoteJid === 'status@broadcast') return;
+            
             const sender = m.key.participant || remoteJid;
             
-            console.log('--------------------------------------------------');
-            console.log(`> MENSAJE DETECTADO`);
-            console.log(`> JID del Chat / Grupo: ${remoteJid}`);
-            console.log(`> Enviado por: ${sender}`);
-            console.log('--------------------------------------------------');
+            console.log(`> [WhatsApp] Mensaje en: ${remoteJid} (De: ${sender})`);
             
-            if (remoteJid && remoteJid.endsWith('@g.us')) {
-                console.log('==================================================');
-                console.log(`¡ID DE GRUPO ENCONTRADO PARA COPIAR!: ${remoteJid}`);
-                console.log('==================================================');
+            if (remoteJid.endsWith('@g.us')) {
+                console.log(`¡ID DE GRUPO VÁLIDO!: ${remoteJid}`);
             }
         } catch (e) {
             console.error("Error leyendo mensaje:", e);
@@ -77,18 +73,28 @@ discordClient.on('ready', () => console.log(`Discord listo: ${discordClient.user
 
 discordClient.on('messageCreate', async (message) => {
     if (message.author.bot || message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
+    
+    console.log(`> [Discord] Mensaje detectado en el canal de origen de L2.`);
+    
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
-    if (images.length === 0 || !WA_GROUP_ID_1) return;
+    if (images.length === 0 || !WA_GROUP_ID_1) {
+        console.log(`> [Discord] No se encontraron imágenes o falta configurar WA_GROUP_ID_1.`);
+        return;
+    }
 
     for (const img of images) {
         try {
+            console.log(`> [Discord] Descargando imagen y enviando a WhatsApp...`);
             const response = await fetch(img.url);
             const buffer = await response.buffer();
             await waSocket.sendMessage(WA_GROUP_ID_1, { 
                 image: buffer, 
                 caption: message.content || '' 
             });
-        } catch (err) { console.error('Error enviando a WhatsApp:', err); }
+            console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo!`);
+        } catch (err) { 
+            console.error('Error enviando imagen a WhatsApp:', err); 
+        }
     }
 });
 
