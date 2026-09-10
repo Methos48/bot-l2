@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
-  res.send('Bot de Lineage II Activo y Operativo 🚀');
+  res.status(200).send('Bot de Lineage II Activo y Operativo 🚀');
 });
 
 app.listen(PORT, () => {
@@ -46,7 +46,9 @@ waClient.on('qr', (qr) => {
     console.log('==================================================');
 });
 
-waClient.on('ready', () => console.log('¡WhatsApp Conectado!'));
+waClient.on('ready', () => {
+    console.log('¡WhatsApp Conectado exitosamente!');
+});
 
 const discordClient = new DiscordClient({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
