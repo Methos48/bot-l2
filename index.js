@@ -91,9 +91,15 @@ discordClient.on('messageCreate', async (message) => {
 
             for (const rawWaGroupId of WA_DESTINATION_GROUPS) {
                 try {
-                    // Extraemos SOLO los números del ID y armamos el JID perfecto
                     const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
                     const waGroupId = `${cleanNumbers}@g.us`;
+
+                    // Forzamos a Baileys a cargar el grupo en memoria para evitar el error 'id de undefined'
+                    try {
+                        await waSocket.groupMetadata(waGroupId);
+                    } catch (e) {
+                        // Si falla la precarga, intentamos continuar de todas formas
+                    }
 
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
