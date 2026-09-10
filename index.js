@@ -1,8 +1,8 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
-const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
 const express = require('express');
+const pino = require('pino');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -22,79 +22,109 @@ const WA_DESTINATION_GROUPS = [
     process.env.WA_GROUP_ID_2
 ].filter(Boolean);
 
-// Inicializar WhatsApp con la configuración clásica de Puppeteer
-const waClient = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    }
-});
+let waSocket;
 
-waClient.on('qr', (qr) => {
-    console.log('Escanea este código QR para WhatsApp:');
-    qrcode.generate(qr, { small: true });
-});
+async function startWhatsApp() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    
+    waSocket = makeWASocket({
+        auth: state,
+        logger: pino({ level: 'silent' }),
+        printQRInTerminal: false,
+        syncFullHistory: false
+    });
 
-waClient.on('ready', () => {
-    console.log('¡WhatsApp conectado correctamente!');
-});
+    waSocket.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+            console.log('==================================================');
+            console.log('ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
+            console.log(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`);
+            console.log('==================================================');
+        }
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) startWhatsApp();
+        } else if (connection === 'open') {
+            console.log('¡WhatsApp Conectado y Estable sin Puppeteer!');
+        }
+    });
 
-// Inicializar Discord
+    waSocket.ev.on('creds.update', saveCreds);
+
+    waSocket.ev.on('messages.upsert', async (chatUpdate) => {
+        try {
+            const m = chatUpdate.messages[0];
+            if (!m || !m.message) return;
+            const remoteJid = m.key.remoteJid;
+            if (!remoteJid || remoteJid.endsWith('@broadcast') || remoteJid === 'status@broadcast') return;
+        } catch (e) {}
+    });
+}
+
 const discordClient = new DiscordClient({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 discordClient.on('ready', () => {
-    console.log(`> [Discord] ¡Conectado como ${discordClient.user.tag}!`);
+    console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`);
 });
 
 discordClient.on('messageCreate', async (message) => {
+    // CHIVATO DE DEPURACIÓN: Esto imprimirá CUALQUIER mensaje en CUALQUIER canal
+    console.log(`> [Discord Monitor] Mensaje visto en canal ID: [${message.channel.id}] de ${message.author.tag}: "${message.content}"`);
+
     if (message.author.bot) return;
-    if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
+    
+    if (message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) {
+        console.log(`> [Discord] El canal ${message.channel.id} no coincide con el origen configurado (${DISCORD_ORIGIN_CHANNEL_ID}).`);
+        return;
+    }
+    
+    console.log(`> [Discord] ¡Coincide el canal de origen! Buscando imágenes...`);
     
     const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
-    if (images.length === 0) return;
+    if (images.length === 0) {
+        console.log(`> [Discord] El mensaje llegó al canal correcto, pero no contiene imágenes.`);
+        return;
+    }
 
     for (const img of images) {
         try {
+            console.log(`> [Puente] Procesando imagen...`);
             const response = await fetch(img.url);
             const buffer = await response.buffer();
             const captionText = message.content || '';
-            const media = new (require('whatsapp-web.js')).MessageMedia(
-                response.headers.get('content-type') || 'image/jpeg',
-                buffer.toString('base64'),
-                'imagen.jpg'
-            );
 
-            // Reenviar a Discord
             for (const destChannelId of DISCORD_DEST_CHANNELS) {
                 try {
                     const destChannel = await discordClient.channels.fetch(destChannelId);
                     if (destChannel) {
                         await destChannel.send({ content: captionText, files: [img.url] });
+                        console.log(`> [Discord] ¡Enviado al canal destino ${destChannelId}!`);
                     }
                 } catch (err) {
-                    console.error(`Error enviando a Discord:`, err);
+                    console.error(`Error enviando al canal Discord ${destChannelId}:`, err);
                 }
             }
 
-            // Reenviar a WhatsApp usando los IDs limpios
-            for (const rawWaGroupId of WA_DESTINATION_GROUPS) {
+            for (const waGroupId of WA_DESTINATION_GROUPS) {
                 try {
-                    const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
-                    const waGroupId = `${cleanNumbers}@g.us`;
-
-                    await waClient.sendMessage(waGroupId, media, { caption: captionText });
-                    console.log(`> [WhatsApp] Imagen enviada al grupo ${waGroupId}`);
+                    await waSocket.sendMessage(waGroupId, { 
+                        image: buffer, 
+                        caption: captionText 
+                    });
+                    console.log(`> [WhatsApp] ¡Enviado al grupo destino ${waGroupId}!`);
                 } catch (err) {
-                    console.error(`Error enviando a WhatsApp:`, err);
+                    console.error(`Error enviando al grupo WhatsApp ${waGroupId}:`, err);
                 }
             }
+
         } catch (err) { 
             console.error('Error procesando imagen:', err); 
         }
     }
 });
 
-waClient.initialize();
+startWhatsApp();
 discordClient.login(DISCORD_BOT_TOKEN);
