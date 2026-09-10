@@ -54,8 +54,21 @@ waClient.on('auth_failure', (msg) => {
     console.error('Fallo de autenticación en WhatsApp:', msg);
 });
 
-waClient.on('ready', () => {
+waClient.on('ready', async () => {
     console.log('¡WhatsApp Conectado y Listo para transmitir!');
+    
+    try {
+        const chats = await waClient.getChats();
+        console.log('================ LISTA DE CHATS Y GRUPOS DISPONIBLES ===============');
+        chats.forEach(chat => {
+            if (chat.isGroup) {
+                console.log(`Nombre del Grupo: ${chat.name} | ID: ${chat.id._serialized}`);
+            }
+        });
+        console.log('===================================================================');
+    } catch (err) {
+        console.error('Error al obtener la lista de grupos:', err);
+    }
 });
 
 const discordClient = new DiscordClient({
