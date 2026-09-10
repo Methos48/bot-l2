@@ -32,7 +32,7 @@ const waClient = new WAClient({
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--single-process', // <-- Este es clave en servidores con poca RAM
+      '--single-process',
       '--disable-gpu',
       '--disable-features=IsolateOrigins,site-per-process'
     ] 
@@ -89,11 +89,16 @@ discordClient.on('messageCreate', async (message) => {
 });
 
 waClient.on('message', async (msg) => {
+    console.log(`[MENSAJE RECIBIDO] De: ${msg.from} | Texto: ${msg.body}`);
     if (msg.from.endsWith('@g.us')) {
         console.log('--------------------------------------------------');
         console.log(`¡GRUPO DETECTADO! ID: ${msg.from}`);
         console.log('--------------------------------------------------');
     }
+});
+
+waClient.initialize();
+discordClient.login(DISCORD_BOT_TOKEN);
 });
 
 waClient.initialize();
