@@ -3,7 +3,6 @@ const { Client: WAClient, LocalAuth, MessageMedia } = require('whatsapp-web.js')
 const fetch = require('node-fetch');
 const express = require('express');
 
-// Configuración del servidor Express para cumplir con el puerto de Render
 const app = express();
 const PORT = process.env.PORT || 10000;
 
@@ -95,10 +94,6 @@ waClient.on('message', async (msg) => {
         console.log(`¡GRUPO DETECTADO! ID: ${msg.from}`);
         console.log('--------------------------------------------------');
     }
-});
-
-waClient.initialize();
-discordClient.login(DISCORD_BOT_TOKEN);
 });
 
 waClient.initialize();
