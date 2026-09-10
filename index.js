@@ -1,116 +1,69 @@
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
-const { Client: WAClient, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const fetch = require('node-fetch');
 const express = require('express');
+const qrcode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-
-app.get('/', (req, res) => {
-  res.status(200).send('Bot de Lineage II Activo y Operativo 🚀');
-});
-
-app.listen(PORT, () => {
-  console.log(`Servidor en puerto ${PORT}`);
-});
+app.get('/', (req, res) => res.status(200).send('Bot Activo 🚀'));
+app.listen(PORT);
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_ORIGIN_CHANNEL_ID = process.env.DISCORD_ORIGIN_CHANNEL_ID;
-const DISCORD_WEBHOOK_1 = process.env.DISCORD_WEBHOOK_1;
-const DISCORD_WEBHOOK_2 = process.env.DISCORD_WEBHOOK_2;
 const WA_GROUP_ID_1 = process.env.WA_GROUP_ID_1;
-const WA_GROUP_ID_2 = process.env.WA_GROUP_ID_2;
 
-const waClient = new WAClient({
-  authStrategy: new LocalAuth({ clientId: 'l2-bot-session' }),
-  puppeteer: { 
-    headless: true,
-    args: [
-      '--no-sandbox', 
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-extensions',
-      '--disable-dev-shm-usage'
-    ] 
-  },
-  authTimeoutMs: 120000
-});
+let waSocket;
 
-waClient.on('qr', (qr) => {
-    console.log('==================================================');
-    console.log('ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
-    console.log(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`);
-    console.log('==================================================');
-});
+async function startWhatsApp() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    
+    waSocket = makeWASocket({
+        auth: state,
+        printQRInTerminal: false
+    });
 
-waClient.on('authenticated', () => {
-    console.log('¡WhatsApp Autenticado Correctamente!');
-});
+    waSocket.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+            console.log('==================================================');
+            console.log('ABRE ESTE ENLACE EN TU NAVEGADOR PARA VER EL QR:');
+            console.log(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`);
+            console.log('==================================================');
+        }
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) startWhatsApp();
+        } else if (connection === 'open') {
+            console.log('¡WhatsApp Conectado y Estable sin Puppeteer!');
+        }
+    });
 
-waClient.on('auth_failure', (msg) => {
-    console.error('Fallo de autenticación en WhatsApp:', msg);
-});
-
-waClient.on('ready', async () => {
-    console.log('¡WhatsApp Conectado y Listo para transmitir!');
-    try {
-        const chats = await waClient.getChats();
-        console.log('================ LISTA DE GRUPOS DISPONIBLES ===============');
-        chats.forEach(chat => {
-            if (chat.isGroup) {
-                console.log(`Nombre: ${chat.name} | ID: ${chat.id._serialized}`);
-            }
-        });
-        console.log('===========================================================');
-    } catch (err) {
-        console.error('Error al obtener chats:', err);
-    }
-});
+    waSocket.ev.on('creds.update', saveCreds);
+}
 
 const discordClient = new DiscordClient({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 discordClient.on('ready', () => console.log(`Discord listo: ${discordClient.user.tag}`));
 
 discordClient.on('messageCreate', async (message) => {
-  if (message.author.bot || message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
+    if (message.author.bot || message.channel.id !== DISCORD_ORIGIN_CHANNEL_ID) return;
+    const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
+    if (images.length === 0 || !WA_GROUP_ID_1) return;
 
-  const attachments = Array.from(message.attachments.values());
-  const images = attachments.filter(att => att.contentType && att.contentType.startsWith('image/'));
-  if (images.length === 0) return;
-
-  for (const img of images) {
-    const imageUrl = img.url;
-
-    const sendWebhook = async (url) => {
-      if (!url) return;
-      try {
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: message.content || undefined, embeds: [{ image: { url: imageUrl } }] })
-        });
-      } catch (err) { console.error('Error Webhook:', err); }
-    };
-
-    await sendWebhook(DISCORD_WEBHOOK_1);
-    await sendWebhook(DISCORD_WEBHOOK_2);
-
-    try {
-      const media = await MessageMedia.fromUrl(imageUrl);
-      const captionText = message.content || '';
-      if (WA_GROUP_ID_1) await waClient.sendMessage(WA_GROUP_ID_1, media, { caption: captionText });
-      if (WA_GROUP_ID_2) await waClient.sendMessage(WA_GROUP_ID_2, media, { caption: captionText });
-    } catch (err) { console.error('Error WhatsApp:', err); }
-  }
+    for (const img of images) {
+        try {
+            const response = await fetch(img.url);
+            const buffer = await response.buffer();
+            await waSocket.sendMessage(WA_GROUP_ID_1, { 
+                image: buffer, 
+                caption: message.content || '' 
+            });
+        } catch (err) { console.error('Error enviando a WhatsApp:', err); }
+    }
 });
 
-waClient.initialize();
+startWhatsApp();
 discordClient.login(DISCORD_BOT_TOKEN);
