@@ -25,6 +25,7 @@ const WA_DESTINATION_GROUPS = [
 let waSocket;
 
 async function startWhatsApp() {
+    console.log('> [WhatsApp] Iniciando conexión con Baileys...');
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     
     waSocket = makeWASocket({
@@ -36,24 +37,18 @@ async function startWhatsApp() {
 
     waSocket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
+        console.log(`> [WhatsApp Connection Update]:`, update);
+        
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log(`> [WhatsApp] Conexión cerrada. ¿Reconectar?: ${shouldReconnect}`);
             if (shouldReconnect) startWhatsApp();
         } else if (connection === 'open') {
-            console.log('¡WhatsApp Conectado y Estable sin Puppeteer!');
+            console.log('> [WhatsApp] ¡Conectado y 100% estable!');
         }
     });
 
     waSocket.ev.on('creds.update', saveCreds);
-
-    waSocket.ev.on('messages.upsert', async (chatUpdate) => {
-        try {
-            const m = chatUpdate.messages[0];
-            if (!m || !m.message) return;
-            const remoteJid = m.key.remoteJid;
-            if (!remoteJid || remoteJid.endsWith('@broadcast') || remoteJid === 'status@broadcast') return;
-        } catch (e) {}
-    });
 }
 
 const discordClient = new DiscordClient({
@@ -74,6 +69,7 @@ discordClient.on('messageCreate', async (message) => {
 
     for (const img of images) {
         try {
+            console.log('> [Discord] Imagen detectada en el canal de origen. Procesando...');
             const response = await fetch(img.url);
             const buffer = await response.buffer();
             const captionText = message.content || '';
@@ -94,7 +90,11 @@ discordClient.on('messageCreate', async (message) => {
                     const cleanNumbers = rawWaGroupId.replace(/\D/g, '');
                     const waGroupId = `${cleanNumbers}@g.us`;
 
-                    // Usamos un objeto de reenvío directo evitando validaciones de caché de chats
+                    if (!waSocket) {
+                        console.error('> [WhatsApp Error] El socket de WhatsApp no está inicializado.');
+                        continue;
+                    }
+
                     await waSocket.sendMessage(waGroupId, { 
                         image: buffer, 
                         caption: captionText 
