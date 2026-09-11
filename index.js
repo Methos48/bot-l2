@@ -75,7 +75,9 @@ discordClient.on('messageCreate', async (message) => {
     // Si no tiene ni imágenes ni texto, no hacemos nada
     if (images.length === 0 && !hasText) return;
 
-    const captionText = message.content || '';
+    const rawCaption = message.content || '';
+    // Estilo alienígena personalizado para WhatsApp
+    const waFormattedText = `$$$ 👽 *『𝐎𝐊𝐓𝐔𝐁𝐑𝐄』* 👽 $$$\n${rawCaption}`.trim();
 
     // ==========================================
     // CASO A: EL MENSAJE TIENE IMÁGENES
@@ -85,18 +87,18 @@ discordClient.on('messageCreate', async (message) => {
 
         for (const img of images) {
             try {
-                // Descargamos una sola vez el buffer de la imagen
+                // Descargamos el buffer de la imagen una sola vez
                 const response = await fetch(img.url);
                 const buffer = await response.buffer();
                 const filename = img.name || 'imagen.png';
 
-                // 1. ENVIAR A DISCORD COMO ARCHIVO ADJUNTO REAL (Visible al instante)
+                // 1. ENVIAR A DISCORD (Visible al instante con Webhook)
                 for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
                     try {
                         const form = new FormData();
                         form.append('file0', buffer, { filename: filename });
-                        if (captionText) {
-                            form.append('content', captionText);
+                        if (rawCaption) {
+                            form.append('content', rawCaption);
                         }
 
                         await fetch(webhookUrl, {
@@ -108,12 +110,12 @@ discordClient.on('messageCreate', async (message) => {
                     }
                 }
 
-                // 2. ENVIAR A WHATSAPP
+                // 2. ENVIAR A WHATSAPP CON EL ESTILO ALIENÍGENA
                 for (const waGroupId of WA_DESTINATION_GROUPS) {
                     try {
                         await waSocket.sendMessage(waGroupId, { 
                             image: buffer, 
-                            caption: captionText 
+                            caption: waFormattedText 
                         });
                         console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                     } catch (err) {
@@ -132,14 +134,14 @@ discordClient.on('messageCreate', async (message) => {
     else if (hasText) {
         console.log(`> [Discord] Texto detectado en el canal de origen. Procesando...`);
 
-        // Reenviar texto a canales de Discord destino usando los Webhooks
+        // Reenviar texto a canales de Discord destino
         for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
             try {
                 await fetch(webhookUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        content: captionText
+                        content: rawCaption
                     })
                 });
             } catch (err) {
@@ -147,11 +149,11 @@ discordClient.on('messageCreate', async (message) => {
             }
         }
 
-        // Reenviar texto a grupos de WhatsApp
+        // Reenviar texto a grupos de WhatsApp con el estilo alienígena
         for (const waGroupId of WA_DESTINATION_GROUPS) {
             try {
                 await waSocket.sendMessage(waGroupId, { 
-                    text: captionText 
+                    text: waFormattedText 
                 });
                 console.log(`> [WhatsApp] ¡Texto enviado con éxito al grupo ${waGroupId}!`);
             } catch (err) {
