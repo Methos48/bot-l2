@@ -83,49 +83,50 @@ discordClient.on('messageCreate', async (message) => {
         console.log(`> [Discord] Imagen(es) detectada(s) en el canal de origen. Procesando...`);
 
         for (const img of images) {
-            try {
-                const response = await fetch(img.url);
-                const buffer = await response.buffer();
+            // 1. ENVIAR A DISCORD DE INMEDIATO (Usando Webhook y Embeds sin demoras)
+            for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
+                try {
+                    const payload = {
+                        embeds: [{
+                            description: captionText || "",
+                            image: {
+                                url: img.url
+                            },
+                            color: 0xDC143C
+                        }]
+                    };
 
-                // Reenviar a canales de Discord destino usando los Webhooks con Embeds
-                for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
-                    try {
-                        const payload = {
-                            embeds: [{
-                                description: captionText || "",
-                                image: {
-                                    url: img.url
-                                },
-                                color: 0xDC143C // Color rojo acorde al clan
-                            }]
-                        };
-
-                        await fetch(webhookUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                    } catch (err) {
-                        console.error(`Error enviando imagen al webhook de Discord:`, err);
-                    }
+                    await fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } catch (err) {
+                    console.error(`Error enviando imagen al webhook de Discord:`, err);
                 }
-
-                // Reenviar a grupos de WhatsApp
-                for (const waGroupId of WA_DESTINATION_GROUPS) {
-                    try {
-                        await waSocket.sendMessage(waGroupId, { 
-                            image: buffer, 
-                            caption: captionText 
-                        });
-                        console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
-                    } catch (err) {
-                        console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
-                    }
-                }
-
-            } catch (err) { 
-                console.error('Error procesando imagen:', err); 
             }
+
+            // 2. DESCARGAR Y ENVIAR A WHATSAPP EN SEGUNDO PLANO
+            (async () => {
+                try {
+                    const response = await fetch(img.url);
+                    const buffer = await response.buffer();
+
+                    for (const waGroupId of WA_DESTINATION_GROUPS) {
+                        try {
+                            await waSocket.sendMessage(waGroupId, { 
+                                image: buffer, 
+                                caption: captionText 
+                            });
+                            console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
+                        } catch (err) {
+                            console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
+                        }
+                    }
+                } catch (err) { 
+                    console.error('Error procesando descarga de imagen para WhatsApp:', err); 
+                }
+            })();
         }
     } 
     // ==========================================
