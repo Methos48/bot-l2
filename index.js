@@ -76,8 +76,7 @@ discordClient.on('messageCreate', async (message) => {
     if (images.length === 0 && !hasText) return;
 
     const rawCaption = message.content || '';
-    // Estilo alienígena personalizado para WhatsApp
-    const waFormattedText = `$$$ 👽 *『𝐎𝐊𝐓𝐔𝐁𝐑𝐄』* 👽 $$$\n${rawCaption}`.trim();
+    const waSignature = '👽 *『𝐎𝐊𝐓𝐔𝐁𝐑𝐄』* 👽';
 
     // ==========================================
     // CASO A: EL MENSAJE TIENE IMÁGENES
@@ -110,13 +109,20 @@ discordClient.on('messageCreate', async (message) => {
                     }
                 }
 
-                // 2. ENVIAR A WHATSAPP CON EL ESTILO ALIENÍGENA
+                // 2. ENVIAR A WHATSAPP (Firma limpia arriba, imagen abajo)
                 for (const waGroupId of WA_DESTINATION_GROUPS) {
                     try {
+                        // Mensaje de texto superior con la firma
+                        await waSocket.sendMessage(waGroupId, { 
+                            text: waSignature 
+                        });
+
+                        // Imagen con el pie de foto original del boss
                         await waSocket.sendMessage(waGroupId, { 
                             image: buffer, 
-                            caption: waFormattedText 
+                            caption: rawCaption 
                         });
+
                         console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
                     } catch (err) {
                         console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
@@ -149,11 +155,12 @@ discordClient.on('messageCreate', async (message) => {
             }
         }
 
-        // Reenviar texto a grupos de WhatsApp con el estilo alienígena
+        // Reenviar texto a grupos de WhatsApp (Firma arriba + texto del mensaje abajo)
         for (const waGroupId of WA_DESTINATION_GROUPS) {
             try {
+                const fullText = `${waSignature}\n${rawCaption}`;
                 await waSocket.sendMessage(waGroupId, { 
-                    text: waFormattedText 
+                    text: fullText 
                 });
                 console.log(`> [WhatsApp] ¡Texto enviado con éxito al grupo ${waGroupId}!`);
             } catch (err) {
