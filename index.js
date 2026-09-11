@@ -1,6 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
 const fetch = require('node-fetch');
+const FormData = require('form-data');
 const express = require('express');
 const pino = require('pino');
 
@@ -83,50 +84,46 @@ discordClient.on('messageCreate', async (message) => {
         console.log(`> [Discord] Imagen(es) detectada(s) en el canal de origen. Procesando...`);
 
         for (const img of images) {
-            // 1. ENVIAR A DISCORD DE INMEDIATO (Usando Webhook y Embeds sin demoras)
-            for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
-                try {
-                    const payload = {
-                        embeds: [{
-                            description: captionText || "",
-                            image: {
-                                url: img.url
-                            },
-                            color: 0xDC143C
-                        }]
-                    };
+            try {
+                // Descargamos una sola vez el buffer de la imagen
+                const response = await fetch(img.url);
+                const buffer = await response.buffer();
+                const filename = img.name || 'imagen.png';
 
-                    await fetch(webhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                } catch (err) {
-                    console.error(`Error enviando imagen al webhook de Discord:`, err);
-                }
-            }
-
-            // 2. DESCARGAR Y ENVIAR A WHATSAPP EN SEGUNDO PLANO
-            (async () => {
-                try {
-                    const response = await fetch(img.url);
-                    const buffer = await response.buffer();
-
-                    for (const waGroupId of WA_DESTINATION_GROUPS) {
-                        try {
-                            await waSocket.sendMessage(waGroupId, { 
-                                image: buffer, 
-                                caption: captionText 
-                            });
-                            console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
-                        } catch (err) {
-                            console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
+                // 1. ENVIAR A DISCORD COMO ARCHIVO ADJUNTO REAL (Visible al instante)
+                for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
+                    try {
+                        const form = new FormData();
+                        form.append('file0', buffer, { filename: filename });
+                        if (captionText) {
+                            form.append('content', captionText);
                         }
+
+                        await fetch(webhookUrl, {
+                            method: 'POST',
+                            body: form
+                        });
+                    } catch (err) {
+                        console.error(`Error enviando imagen al webhook de Discord:`, err);
                     }
-                } catch (err) { 
-                    console.error('Error procesando descarga de imagen para WhatsApp:', err); 
                 }
-            })();
+
+                // 2. ENVIAR A WHATSAPP
+                for (const waGroupId of WA_DESTINATION_GROUPS) {
+                    try {
+                        await waSocket.sendMessage(waGroupId, { 
+                            image: buffer, 
+                            caption: captionText 
+                        });
+                        console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
+                    } catch (err) {
+                        console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
+                    }
+                }
+
+            } catch (err) { 
+                console.error('Error procesando imagen:', err); 
+            }
         }
     } 
     // ==========================================
