@@ -87,15 +87,23 @@ discordClient.on('messageCreate', async (message) => {
                 const response = await fetch(img.url);
                 const buffer = await response.buffer();
 
-                // Reenviar a canales de Discord destino usando los Webhooks
+                // Reenviar a canales de Discord destino usando los Webhooks con Embeds
                 for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
                     try {
+                        const payload = {
+                            embeds: [{
+                                description: captionText || "",
+                                image: {
+                                    url: img.url
+                                },
+                                color: 0xDC143C // Color rojo acorde al clan
+                            }]
+                        };
+
                         await fetch(webhookUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                content: captionText ? `${captionText}\n${img.url}` : img.url
-                            })
+                            body: JSON.stringify(payload)
                         });
                     } catch (err) {
                         console.error(`Error enviando imagen al webhook de Discord:`, err);
