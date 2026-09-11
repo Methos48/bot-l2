@@ -12,7 +12,8 @@ app.listen(PORT);
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_ORIGIN_CHANNEL_ID = process.env.DISCORD_ORIGIN_CHANNEL_ID;
 
-const DISCORD_DEST_CHANNELS = [
+// Tus Webhooks configurados en Discord
+const DISCORD_WEBHOOK_URLS = [
     process.env.DISCORD_WEBHOOK_1,
     process.env.DISCORD_WEBHOOK_2
 ].filter(Boolean);
@@ -86,15 +87,18 @@ discordClient.on('messageCreate', async (message) => {
                 const response = await fetch(img.url);
                 const buffer = await response.buffer();
 
-                // Reenviar a canales de Discord destino
-                for (const destChannelId of DISCORD_DEST_CHANNELS) {
+                // Reenviar a canales de Discord destino usando los Webhooks
+                for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
                     try {
-                        const destChannel = await discordClient.channels.fetch(destChannelId);
-                        if (destChannel) {
-                            await destChannel.send({ content: captionText, files: [img.url] });
-                        }
+                        await fetch(webhookUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                content: captionText ? `${captionText}\n${img.url}` : img.url
+                            })
+                        });
                     } catch (err) {
-                        console.error(`Error enviando imagen al canal Discord ${destChannelId}:`, err);
+                        console.error(`Error enviando imagen al webhook de Discord:`, err);
                     }
                 }
 
@@ -122,15 +126,18 @@ discordClient.on('messageCreate', async (message) => {
     else if (hasText) {
         console.log(`> [Discord] Texto detectado en el canal de origen. Procesando...`);
 
-        // Reenviar texto a canales de Discord destino
-        for (const destChannelId of DISCORD_DEST_CHANNELS) {
+        // Reenviar texto a canales de Discord destino usando los Webhooks
+        for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
             try {
-                const destChannel = await discordClient.channels.fetch(destChannelId);
-                if (destChannel) {
-                    await destChannel.send({ content: captionText });
-                }
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: captionText
+                    })
+                });
             } catch (err) {
-                console.error(`Error enviando texto al canal Discord ${destChannelId}:`, err);
+                console.error(`Error enviando texto al webhook de Discord:`, err);
             }
         }
 
