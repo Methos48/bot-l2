@@ -110,12 +110,76 @@ discordClient.on('messageCreate', async (message) => {
 
     if (!isOrigin && !isScheduled) return;
     
-    const images = Array.from(message.attachments.values()).filter(att => att.contentType?.startsWith('image/'));
-    const hasText = message.content && message.content.trim().length > 0;
+    // Capturar texto y emojis del mensaje principal
+    let content = message.content || '';
 
-    if (images.length === 0 && !hasText) return;
+    // Si el mensaje viene en un embed (reenviado) y no tiene contenido directo, intentamos rescatar texto/descripción
+    if (!content && message.embeds && message.embeds.length > 0) {
+        for (const embed of message.embeds) {
+            if (embed.description) content += `\n${embed.description}`;
+            if (embed.title) content += `\n${embed.title}`;
+        }
+        content = content.trim();
+    }
 
-    const content = message.content || '';
+    // Resolver imágenes: 1. Adjuntos directos, 2. Embeds (Reenvíos), 3. Referencias/Respuestas a otros mensajes
+    let imageBuffers = [];
+
+    // Recolectar adjuntos directos
+    if (message.attachments.size > 0) {
+        for (const [_, att] of message.attachments) {
+            if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
+                try {
+                    const res = await fetch(att.url);
+                    const buf = await res.buffer();
+                    imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen.png' });
+                } catch (e) {
+                    console.error('Error descargando adjunto:', e);
+                }
+            }
+        }
+    }
+
+    // Recolectar de Embeds (Mensajes Reenviados) si no hubo adjuntos directos
+    if (imageBuffers.length === 0 && message.embeds.length > 0) {
+        for (const embed of message.embeds) {
+            if (embed.image && embed.image.url) {
+                try {
+                    const res = await fetch(embed.image.url);
+                    const buf = await res.buffer();
+                    imageBuffers.push({ buffer: buf, filename: 'imagen_reenviada.png' });
+                } catch (e) {
+                    console.error('Error descargando imagen de embed reenviado:', e);
+                }
+            }
+        }
+    }
+
+    // Recolectar de Mensajes Citados / Respuestas (Replies) si aplica
+    if (imageBuffers.length === 0 && message.reference && message.reference.messageId) {
+        try {
+            const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+            if (referencedMessage) {
+                if (!content && referencedMessage.content) {
+                    content = referencedMessage.content;
+                }
+                for (const [_, att] of referencedMessage.attachments) {
+                    if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
+                        const res = await fetch(att.url);
+                        const buf = await res.buffer();
+                        imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen.png' });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error obteniendo mensaje referenciado:', e);
+        }
+    }
+
+    const hasText = content && content.trim().length > 0;
+    const hasImages = imageBuffers.length > 0;
+
+    if (!hasImages && !hasText) return;
 
     // Si viene del canal de programación, evaluamos si trae el comando de fecha /DD/MM/YY HH:MM
     if (isScheduled) {
@@ -131,25 +195,16 @@ discordClient.on('messageCreate', async (message) => {
             const delay = targetDate.getTime() - now.getTime();
 
             if (delay > 0) {
-                // Removemos el comando de fecha para que solo quede el texto del boss (si lo hay)
+                // Removemos el comando de fecha para que solo quede el texto del boss y sus emojis
                 const cleanCaption = content.replace(scheduleRegex, '').trim();
 
                 console.log(`> [Programador] Imagen programada para el ${day}/${month}/${year} a las ${hour}:${minute}`);
                 try { await message.react('⏰'); } catch (e) {}
 
-                for (const img of images) {
-                    try {
-                        const response = await fetch(img.url);
-                        const buffer = await response.buffer();
-                        const filename = img.name || 'imagen.png';
-
-                        setTimeout(async () => {
-                            await dispatchMessage(buffer, filename, cleanCaption);
-                        }, delay);
-
-                    } catch (err) {
-                        console.error('Error guardando imagen para programar:', err);
-                    }
+                for (const imgData of imageBuffers) {
+                    setTimeout(async () => {
+                        await dispatchMessage(imgData.buffer, imgData.filename, cleanCaption);
+                    }, delay);
                 }
                 return; // Evita que se procese de forma instantánea
             } else {
@@ -160,28 +215,23 @@ discordClient.on('messageCreate', async (message) => {
     }
 
     // ==========================================
-    // PROCESAMIENTO INSTANTÁNEO (Canal de origen o programados sin formato válido)
+    // PROCESAMIENTO INSTANTÁNEO
     // ==========================================
     const rawCaption = content;
     const waSignature = '👽 *『𝐎𝐊𝐓𝐔𝐁𝐑𝐄』* 👽';
     const waCaptionText = rawCaption ? `${waSignature}\n${rawCaption}` : waSignature;
 
-    if (images.length > 0) {
-        console.log(`> [Discord] Imagen(es) detectada(s). Procesando de forma instantánea...`);
-        for (const img of images) {
+    if (hasImages) {
+        console.log(`> [Discord] Imagen(es) detectada(s) (Directa, Reenviada o Citada). Procesando...`);
+        for (const imgData of imageBuffers) {
             try {
-                const response = await fetch(img.url);
-                const buffer = await response.buffer();
-                const filename = img.name || 'imagen.png';
-
-                await dispatchMessage(buffer, filename, rawCaption);
-
+                await dispatchMessage(imgData.buffer, imgData.filename, rawCaption);
             } catch (err) { 
                 console.error('Error procesando imagen:', err); 
             }
         }
     } else if (hasText) {
-        console.log(`> [Discord] Texto detectado. Procesando de forma instantánea...`);
+        console.log(`> [Discord] Texto con emojis detectado. Procesando de forma instantánea...`);
         for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
             try {
                 await fetch(webhookUrl, {
