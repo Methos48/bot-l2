@@ -110,23 +110,34 @@ discordClient.on('messageCreate', async (message) => {
 
     if (!isOrigin && !isScheduled) return;
     
-    // Capturar texto y emojis del mensaje principal
     let content = message.content || '';
-
-    // Si el mensaje viene en un embed (reenviado) y no tiene contenido directo, intentamos rescatar texto/descripción
-    if (!content && message.embeds && message.embeds.length > 0) {
-        for (const embed of message.embeds) {
-            if (embed.description) content += `\n${embed.description}`;
-            if (embed.title) content += `\n${embed.title}`;
-        }
-        content = content.trim();
-    }
-
-    // Resolver imágenes: 1. Adjuntos directos, 2. Embeds (Reenvíos), 3. Referencias/Respuestas a otros mensajes
     let imageBuffers = [];
 
-    // Recolectar adjuntos directos
-    if (message.attachments.size > 0) {
+    // 1. Verificar si es un mensaje con Snapshot (Reenvío nativo de Discord / Forward)
+    try {
+        if (message.messageSnapshots && message.messageSnapshots.size > 0) {
+            const snapshot = message.messageSnapshots.first();
+            if (snapshot) {
+                if (!content && snapshot.content) {
+                    content = snapshot.content;
+                }
+                if (snapshot.attachments && snapshot.attachments.size > 0) {
+                    for (const [_, att] of snapshot.attachments) {
+                        if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
+                            const res = await fetch(att.url);
+                            const buf = await res.buffer();
+                            imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen_snapshot.png' });
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error procesando messageSnapshots:', e);
+    }
+
+    // 2. Si no hubo snapshot, buscar adjuntos directos normales
+    if (imageBuffers.length === 0 && message.attachments.size > 0) {
         for (const [_, att] of message.attachments) {
             if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
                 try {
@@ -140,7 +151,7 @@ discordClient.on('messageCreate', async (message) => {
         }
     }
 
-    // Recolectar de Embeds (Mensajes Reenviados) si no hubo adjuntos directos
+    // 3. Buscar en Embeds (por si viene de otro bot o integración externa)
     if (imageBuffers.length === 0 && message.embeds.length > 0) {
         for (const embed of message.embeds) {
             if (embed.image && embed.image.url) {
@@ -148,21 +159,20 @@ discordClient.on('messageCreate', async (message) => {
                     const res = await fetch(embed.image.url);
                     const buf = await res.buffer();
                     imageBuffers.push({ buffer: buf, filename: 'imagen_reenviada.png' });
+                    if (!content && embed.description) content = embed.description;
                 } catch (e) {
-                    console.error('Error descargando imagen de embed reenviado:', e);
+                    console.error('Error descargando imagen de embed:', e);
                 }
             }
         }
     }
 
-    // Recolectar de Mensajes Citados / Respuestas (Replies) si aplica
+    // 4. Buscar en Mensajes Citados / Respuestas (Replies)
     if (imageBuffers.length === 0 && message.reference && message.reference.messageId) {
         try {
             const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
             if (referencedMessage) {
-                if (!content && referencedMessage.content) {
-                    content = referencedMessage.content;
-                }
+                if (!content && referencedMessage.content) content = referencedMessage.content;
                 for (const [_, att] of referencedMessage.attachments) {
                     if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
                         const res = await fetch(att.url);
@@ -195,7 +205,6 @@ discordClient.on('messageCreate', async (message) => {
             const delay = targetDate.getTime() - now.getTime();
 
             if (delay > 0) {
-                // Removemos el comando de fecha para que solo quede el texto del boss y sus emojis
                 const cleanCaption = content.replace(scheduleRegex, '').trim();
 
                 console.log(`> [Programador] Imagen programada para el ${day}/${month}/${year} a las ${hour}:${minute}`);
@@ -206,7 +215,7 @@ discordClient.on('messageCreate', async (message) => {
                         await dispatchMessage(imgData.buffer, imgData.filename, cleanCaption);
                     }, delay);
                 }
-                return; // Evita que se procese de forma instantánea
+                return;
             } else {
                 try { await message.react('❌'); } catch (e) {}
                 return;
@@ -222,7 +231,7 @@ discordClient.on('messageCreate', async (message) => {
     const waCaptionText = rawCaption ? `${waSignature}\n${rawCaption}` : waSignature;
 
     if (hasImages) {
-        console.log(`> [Discord] Imagen(es) detectada(s) (Directa, Reenviada o Citada). Procesando...`);
+        console.log(`> [Discord] Imagen(es) detectada(s) (Snapshot, Directa, Embed o Citada). Procesando...`);
         for (const imgData of imageBuffers) {
             try {
                 await dispatchMessage(imgData.buffer, imgData.filename, rawCaption);
