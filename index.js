@@ -5,7 +5,6 @@ const FormData = require('form-data');
 const express = require('express');
 const pino = require('pino');
 
-
 const app = express();
 const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.status(200).send('Bot Activo 🚀'));
@@ -13,10 +12,8 @@ app.listen(PORT);
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_ORIGIN_CHANNEL_ID = process.env.DISCORD_ORIGIN_CHANNEL_ID;
-// Canal exclusivo para soltar las imágenes programadas
 const DISCORD_SCHEDULED_CHANNEL_ID = process.env.DISCORD_SCHEDULED_CHANNEL_ID;
 
-// Tus Webhooks configurados en Discord
 const DISCORD_WEBHOOK_URLS = [
     process.env.DISCORD_WEBHOOK_1,
     process.env.DISCORD_WEBHOOK_2
@@ -66,11 +63,8 @@ discordClient.on('ready', () => {
     console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`);
 });
 
-// Función centralizada para enviar al canal destino (Discord Webhooks + WhatsApp)
+// Función centralizada para enviar al canal destino (Discord Webhooks + WhatsApp sin encabezado)
 async function dispatchMessage(buffer, filename, rawCaption) {
-    const waSignature = '👽 *『𝐎𝐊𝐓𝐔𝐁𝐑𝐄』* 👽';
-    const waCaptionText = rawCaption ? `${waSignature}\n${rawCaption}` : waSignature;
-
     // 1. Enviar a Discord (Webhooks)
     for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
         try {
@@ -89,13 +83,15 @@ async function dispatchMessage(buffer, filename, rawCaption) {
         }
     }
 
-    // 2. Enviar a WhatsApp (Imagen con firma abajo en el caption)
+    // 2. Enviar a WhatsApp (Imagen con el texto limpio, sin encabezado)
     for (const waGroupId of WA_DESTINATION_GROUPS) {
         try {
-            await waSocket.sendMessage(waGroupId, { 
-                image: buffer, 
-                caption: waCaptionText 
-            });
+            const waPayload = { image: buffer };
+            if (rawCaption) {
+                waPayload.caption = rawCaption;
+            }
+
+            await waSocket.sendMessage(waGroupId, waPayload);
             console.log(`> [WhatsApp] ¡Imagen enviada con éxito al grupo ${waGroupId}!`);
         } catch (err) {
             console.error(`Error enviando imagen al grupo WhatsApp ${waGroupId}:`, err);
@@ -114,7 +110,7 @@ discordClient.on('messageCreate', async (message) => {
     let content = message.content || '';
     let imageBuffers = [];
 
-    // 1. Verificar si es un mensaje con Snapshot (Reenvío nativo de Discord / Forward)
+    // 1. Verificar si es un mensaje con Snapshot
     try {
         if (message.messageSnapshots && message.messageSnapshots.size > 0) {
             const snapshot = message.messageSnapshots.first();
@@ -152,7 +148,7 @@ discordClient.on('messageCreate', async (message) => {
         }
     }
 
-    // 3. Buscar en Embeds (por si viene de otro bot o integración externa)
+    // 3. Buscar en Embeds
     if (imageBuffers.length === 0 && message.embeds.length > 0) {
         for (const embed of message.embeds) {
             if (embed.image && embed.image.url) {
@@ -168,7 +164,7 @@ discordClient.on('messageCreate', async (message) => {
         }
     }
 
-    // 4. Buscar en Mensajes Citados / Respuestas (Replies)
+    // 4. Buscar en Mensajes Citados / Respuestas
     if (imageBuffers.length === 0 && message.reference && message.reference.messageId) {
         try {
             const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
@@ -192,7 +188,7 @@ discordClient.on('messageCreate', async (message) => {
 
     if (!hasImages && !hasText) return;
 
-    // Si viene del canal de programación, evaluamos si trae el comando de fecha /DD/MM/YY HH:MM
+    // Si viene del canal de programación
     if (isScheduled) {
         const scheduleRegex = /^\/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/;
         const match = content.match(scheduleRegex);
@@ -228,11 +224,9 @@ discordClient.on('messageCreate', async (message) => {
     // PROCESAMIENTO INSTANTÁNEO
     // ==========================================
     const rawCaption = content;
-    const waSignature = '👽 *『𝐎𝐊𝐓𝐔𝐁𝐑𝐄』* 👽';
-    const waCaptionText = rawCaption ? `${waSignature}\n${rawCaption}` : waSignature;
 
     if (hasImages) {
-        console.log(`> [Discord] Imagen(es) detectada(s) (Snapshot, Directa, Embed o Citada). Procesando...`);
+        console.log(`> [Discord] Imagen(es) detectada(s). Procesando...`);
         for (const imgData of imageBuffers) {
             try {
                 await dispatchMessage(imgData.buffer, imgData.filename, rawCaption);
@@ -241,7 +235,7 @@ discordClient.on('messageCreate', async (message) => {
             }
         }
     } else if (hasText) {
-        console.log(`> [Discord] Texto con emojis detectado. Procesando de forma instantánea...`);
+        console.log(`> [Discord] Texto detectado. Procesando de forma instantánea...`);
         for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
             try {
                 await fetch(webhookUrl, {
@@ -256,9 +250,8 @@ discordClient.on('messageCreate', async (message) => {
 
         for (const waGroupId of WA_DESTINATION_GROUPS) {
             try {
-                const fullText = `${waSignature}\n${rawCaption}`;
-                await waSocket.sendMessage(waGroupId, { text: fullText });
-                console.log(`> [WhatsApp] ¡Texto enviado con éxito al grupo ${waGroupId}!`);
+                await waSocket.sendMessage(waGroupId, { text: rawCaption });
+                console.log(`> [WhatsApp] ¡Texto enviado con éxito al grupo ${waGroupId} (sin encabezado)!`);
             } catch (err) {
                 console.error(`Error enviando texto al grupo WhatsApp ${waGroupId}:`, err);
             }
