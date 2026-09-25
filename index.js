@@ -191,6 +191,9 @@ discordClient.on('messageCreate', async (message) => {
                 const cleanCaption = content.replace(scheduleRegex, '').trim();
                 try { await message.react('⏰'); } catch (e) {}
 
+                // Eliminamos el mensaje original de inmediato al programarlo (opcional, o puedes borrarlo al cumplirse el tiempo)
+                try { await message.delete(); } catch (e) { console.error('No se pudo eliminar el mensaje programado:', e); }
+
                 for (const imgData of imageBuffers) {
                     setTimeout(async () => {
                         await dispatchMessage(imgData.buffer, imgData.filename, cleanCaption);
@@ -234,6 +237,14 @@ discordClient.on('messageCreate', async (message) => {
                 console.error(`Error enviando texto al grupo WhatsApp ${waGroupId}:`, err);
             }
         }
+    }
+
+    // Eliminar el mensaje de Discord inmediatamente después de enviarlo con éxito
+    try {
+        await message.delete();
+        console.log('> [Discord] Mensaje original eliminado del canal.');
+    } catch (err) {
+        console.error('Error al intentar eliminar el mensaje de Discord (verifica permisos del bot):', err);
     }
 });
 
