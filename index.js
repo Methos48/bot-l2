@@ -65,12 +65,6 @@ const discordClient = new DiscordClient({
     ]
 });
 
-// Registrar eventos de red de Discord para ver si se comunica con la API
-discordClient.on('debug', info => {
-    // Descomenta la siguiente línea si quieres ver todo el tráfico de red de Discord en la consola
-    // console.log(`[DISCORD DEBUG] ${info}`);
-});
-
 discordClient.on('warn', info => {
     console.log(`[DISCORD WARN] ${info}`);
 });
@@ -240,5 +234,23 @@ discordClient.on('messageCreate', async (message) => {
     }
 });
 
-startWhatsApp();
-discordClient.login(DISCORD_BOT_TOKEN);
+// Inicialización controlada de servicios
+try {
+    console.log('> [Sistema] Iniciando WhatsApp...');
+    startWhatsApp();
+} catch (err) {
+    console.error('> [Error crítico iniciando WhatsApp]:', err);
+}
+
+try {
+    console.log('> [Sistema] Intentando autenticar cliente de Discord...');
+    if (!DISCORD_BOT_TOKEN) {
+        console.error('> [Error CRÍTICO] La variable DISCORD_BOT_TOKEN está vacía o no existe en Render.');
+    } else {
+        discordClient.login(DISCORD_BOT_TOKEN)
+            .then(() => console.log('> [Discord] ¡Conexión iniciada correctamente!'))
+            .catch(err => console.error('> [Discord] Error en la autenticación con la API:', err));
+    }
+} catch (err) {
+    console.error('> [Error crítico en el bloque de Discord]:', err);
+}
