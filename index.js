@@ -103,6 +103,9 @@ async function dispatchMessage(buffer, filename, rawCaption) {
 }
 
 discordClient.on('messageCreate', async (message) => {
+    // === LÍNEA DE DEPURACIÓN ===
+    console.log(`[DEBUG] Canal: ${message.channel.id} | Autor ID: ${message.author.id} | Nombre: ${message.author.tag} | Es Bot: ${message.author.bot} | Contenido: "${message.content}"`);
+
     // Si es este mismo bot, o si es cualquier otro bot que NO sea el autorizado, lo ignoramos
     if (message.author.id === discordClient.user.id || (message.author.bot && message.author.id !== ALLOWED_BOT_ID)) return;
 
