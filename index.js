@@ -24,6 +24,9 @@ const WA_DESTINATION_GROUPS = [
     process.env.WA_GROUP_ID_2
 ].filter(Boolean);
 
+// ID del otro bot autorizado para enviar mensajes
+const ALLOWED_BOT_ID = '1548524655076184104';
+
 let waSocket;
 
 async function startWhatsApp() {
@@ -100,7 +103,8 @@ async function dispatchMessage(buffer, filename, rawCaption) {
 }
 
 discordClient.on('messageCreate', async (message) => {
-    if (message.author.id === discordClient.user.id || message.author.bot) return;
+    // Si es este mismo bot, o si es cualquier otro bot que NO sea el autorizado, lo ignoramos
+    if (message.author.id === discordClient.user.id || (message.author.bot && message.author.id !== ALLOWED_BOT_ID)) return;
 
     const isOrigin = message.channel.id === DISCORD_ORIGIN_CHANNEL_ID;
     const isScheduled = DISCORD_SCHEDULED_CHANNEL_ID && message.channel.id === DISCORD_SCHEDULED_CHANNEL_ID;
