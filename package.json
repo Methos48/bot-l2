@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.12",
-    "discord.js": "^14.14.1",
+    "discord.js": "^14.17.3",
     "express": "^4.18.2",
     "node-fetch": "^2.7.0",
     "pino": "^9.0.0",
