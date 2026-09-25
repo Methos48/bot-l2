@@ -103,12 +103,18 @@ async function dispatchMessage(buffer, filename, rawCaption) {
 }
 
 discordClient.on('messageCreate', async (message) => {
-    // === LÍNEA DE DEPURACIÓN ===
-    console.log(`[DEBUG] Canal: ${message.channel.id} | Autor ID: ${message.author.id} | Nombre: ${message.author.tag} | Es Bot: ${message.author.bot} | Contenido: "${message.content}"`);
+    // === REGISTRO DE DEPURACIÓN GLOBAL (SIEMPRE SE EJECUTA) ===
+    console.log(`[DEBUG] Canal ID: ${message.channel.id} | Autor ID: ${message.author.id} | Es Bot: ${message.author.bot} | Contenido: "${message.content}"`);
 
-    // Si es este mismo bot, o si es cualquier otro bot que NO sea el autorizado, lo ignoramos
-    if (message.author.id === discordClient.user.id || (message.author.bot && message.author.id !== ALLOWED_BOT_ID)) return;
+    // 1. Ignorar si es este mismo bot
+    if (message.author.id === discordClient.user.id) return;
 
+    // 2. Si es un bot diferente, verificar si es el bot autorizado
+    if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) {
+        return; // Ignora otros bots que no estén en la lista blanca
+    }
+
+    // 3. Validar canales permitidos
     const isOrigin = message.channel.id === DISCORD_ORIGIN_CHANNEL_ID;
     const isScheduled = DISCORD_SCHEDULED_CHANNEL_ID && message.channel.id === DISCORD_SCHEDULED_CHANNEL_ID;
 
