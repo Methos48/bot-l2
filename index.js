@@ -11,12 +11,19 @@ app.get('/', (req, res) => res.status(200).send('Bot Activo 🚀'));
 app.listen(PORT);
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const DISCORD_ORIGIN_CHANNEL_ID = process.env.DISCORD_ORIGIN_CHANNEL_ID;
 const DISCORD_SCHEDULED_CHANNEL_ID = process.env.DISCORD_SCHEDULED_CHANNEL_ID;
 
+// Canales de origen de Discord que el bot escuchará
+const DISCORD_ORIGIN_CHANNELS = [
+    process.env.DISCORD_ORIGIN_CHANNEL_ID,
+    process.env.DISCORD_ORIGIN_CHANNEL_ID_2
+].filter(Boolean);
+
+// Webhooks de Discord donde se reenviarán los mensajes
 const DISCORD_WEBHOOK_URLS = [
     process.env.DISCORD_WEBHOOK_1,
-    process.env.DISCORD_WEBHOOK_2
+    process.env.DISCORD_WEBHOOK_2,
+    process.env.DISCORD_WEBHOOK_3
 ].filter(Boolean);
 
 const WA_DESTINATION_GROUPS = [
@@ -78,6 +85,19 @@ async function startWhatsApp() {
     });
 
     waSocket.ev.on('creds.update', saveCreds);
+
+    // --- CAPTURADOR TEMPORAL DE ID DE GRUPO DE WHATSAPP ---
+    // Escribe cualquier mensaje en tu grupo de WhatsApp desde el celular
+    // y mira los logs de Railway/consola para ver su ID exacto.
+    waSocket.ev.on('messages.upsert', async ({ messages }) => {
+        const m = messages[0];
+        if (!m.message) return;
+        const remoteJid = m.key.remoteJid;
+        if (remoteJid && remoteJid.endsWith('@g.us')) {
+            console.log(`> [WhatsApp ID Encontrado] El ID de este grupo es: ${remoteJid}`);
+        }
+    });
+    // -----------------------------------------------------
 }
 
 async function dispatchMessage(buffer, filename, rawCaption) {
@@ -114,7 +134,7 @@ discordClient.on('messageCreate', async (message) => {
     if (message.author.id === discordClient.user.id) return;
     if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) return;
 
-    const isOrigin = message.channel.id === DISCORD_ORIGIN_CHANNEL_ID;
+    const isOrigin = DISCORD_ORIGIN_CHANNELS.includes(message.channel.id);
     const isScheduled = DISCORD_SCHEDULED_CHANNEL_ID && message.channel.id === DISCORD_SCHEDULED_CHANNEL_ID;
 
     if (!isOrigin && !isScheduled) return;
@@ -191,7 +211,6 @@ discordClient.on('messageCreate', async (message) => {
                 const cleanCaption = content.replace(scheduleRegex, '').trim();
                 try { await message.react('⏰'); } catch (e) {}
 
-                // Eliminamos el mensaje original de inmediato al programarlo (opcional, o puedes borrarlo al cumplirse el tiempo)
                 try { await message.delete(); } catch (e) { console.error('No se pudo eliminar el mensaje programado:', e); }
 
                 for (const imgData of imageBuffers) {
@@ -239,7 +258,6 @@ discordClient.on('messageCreate', async (message) => {
         }
     }
 
-    // Eliminar el mensaje de Discord inmediatamente después de enviarlo con éxito
     try {
         await message.delete();
         console.log('> [Discord] Mensaje original eliminado del canal.');
