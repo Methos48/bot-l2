@@ -26,6 +26,29 @@ const WA_DESTINATION_GROUPS = [
 
 const ALLOWED_BOT_ID = '1548524655076184104';
 
+// --- INICIALIZACIÓN DE DISCORD PRIMERO ---
+console.log('> [Sistema] Configurando cliente de Discord...');
+const discordClient = new DiscordClient({
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent
+    ]
+});
+
+discordClient.on('warn', info => console.log(`[DISCORD WARN] ${info}`));
+discordClient.on('error', error => console.error(`[DISCORD ERROR]`, error));
+discordClient.on('ready', () => console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`));
+
+if (!DISCORD_BOT_TOKEN) {
+    console.error('> [Error CRÍTICO] La variable DISCORD_BOT_TOKEN no está definida.');
+} else {
+    discordClient.login(DISCORD_BOT_TOKEN)
+        .then(() => console.log('> [Discord] Login solicitado con éxito.'))
+        .catch(err => console.error('> [Discord] Fallo al iniciar sesión:', err));
+}
+// ------------------------------------------
+
 let waSocket;
 
 async function startWhatsApp() {
@@ -56,26 +79,6 @@ async function startWhatsApp() {
 
     waSocket.ev.on('creds.update', saveCreds);
 }
-
-const discordClient = new DiscordClient({
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-discordClient.on('warn', info => {
-    console.log(`[DISCORD WARN] ${info}`);
-});
-
-discordClient.on('error', error => {
-    console.error(`[DISCORD ERROR]`, error);
-});
-
-discordClient.on('ready', () => {
-    console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`);
-});
 
 async function dispatchMessage(buffer, filename, rawCaption) {
     for (const webhookUrl of DISCORD_WEBHOOK_URLS) {
@@ -234,23 +237,5 @@ discordClient.on('messageCreate', async (message) => {
     }
 });
 
-// Inicialización controlada de servicios
-try {
-    console.log('> [Sistema] Iniciando WhatsApp...');
-    startWhatsApp();
-} catch (err) {
-    console.error('> [Error crítico iniciando WhatsApp]:', err);
-}
-
-try {
-    console.log('> [Sistema] Intentando autenticar cliente de Discord...');
-    if (!DISCORD_BOT_TOKEN) {
-        console.error('> [Error CRÍTICO] La variable DISCORD_BOT_TOKEN está vacía o no existe en Render.');
-    } else {
-        discordClient.login(DISCORD_BOT_TOKEN)
-            .then(() => console.log('> [Discord] ¡Conexión iniciada correctamente!'))
-            .catch(err => console.error('> [Discord] Error en la autenticación con la API:', err));
-    }
-} catch (err) {
-    console.error('> [Error crítico en el bloque de Discord]:', err);
-}
+// Iniciar WhatsApp al final
+startWhatsApp();
