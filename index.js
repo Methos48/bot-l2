@@ -133,6 +133,13 @@ discordClient.on('messageCreate', async (message) => {
     if (message.author.id === discordClient.user.id) return;
     if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) return;
 
+    // IGNORAR COMANDOS QUE COMIENCEN CON / O !
+    const contentCheck = message.content ? message.content.trim() : '';
+    if (contentCheck.startsWith('/') || contentCheck.startsWith('!')) {
+        console.log(`> [Filtro] Comando detectado y omitido: "${contentCheck}"`);
+        return;
+    }
+
     const isChannel1 = CHANNEL_1 && message.channel.id === CHANNEL_1;
     const isChannel2 = CHANNEL_2 && message.channel.id === CHANNEL_2;
     const isScheduled = DISCORD_SCHEDULED_CHANNEL_ID && message.channel.id === DISCORD_SCHEDULED_CHANNEL_ID;
