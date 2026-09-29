@@ -45,6 +45,7 @@ const discordClient = new DiscordClient({
 
 discordClient.on('warn', info => console.log(`[DISCORD WARN] ${info}`));
 discordClient.on('error', error => console.error(`[DISCORD ERROR]`, error));
+discordClient.on('clientReady', () => console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`));
 discordClient.on('ready', () => console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`));
 
 if (!DISCORD_BOT_TOKEN) {
@@ -135,20 +136,16 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
 }
 
 discordClient.on('messageCreate', async (message) => {
-    console.log(`[DEBUG EXTREMO] ¡Mensaje capturado! Canal: ${message.channel.id} | Autor: ${message.author.tag} (${message.author.id})`);
+    console.log(`[DEBUG] Mensaje detectado | Canal: ${message.channel.id} | Autor ID: ${message.author.id} | Bot?: ${message.author.bot}`);
 
     if (message.author.id === discordClient.user.id) return;
 
-    // Filtro estricto de bots: Si es bot, SOLO se permite si su ID es exactamente ALLOWED_BOT_ID
     if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) {
-        console.log(`> [Filtro] Bot ignorado: ${message.author.tag} (${message.author.id})`);
         return;
     }
 
-    // IGNORAR COMANDOS QUE COMIENCEN CON / O ! (EXCEPTO si es el bot permitido ejecutando comandos de barra que generan embeds)
     const contentCheck = message.content ? message.content.trim() : '';
     if (message.author.id !== ALLOWED_BOT_ID && (contentCheck.startsWith('/') || contentCheck.startsWith('!'))) {
-        console.log(`> [Filtro] Comando detectado y omitido de usuario: "${contentCheck}"`);
         return;
     }
 
@@ -169,33 +166,15 @@ discordClient.on('messageCreate', async (message) => {
     let content = message.content || '';
     let imageBuffers = [];
 
-    try {
-        if (message.messageSnapshots && message.messageSnapshots.size > 0) {
-            const snapshot = message.messageSnapshots.first();
-            if (snapshot) {
-                if (!content && snapshot.content) content = snapshot.content;
-                if (snapshot.attachments && snapshot.attachments.size > 0) {
-                    for (const [_, att] of snapshot.attachments) {
-                        if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
-                            const res = await fetch(att.url);
-                            const buf = await res.buffer();
-                            imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen_snapshot.png' });
-                        }
-                    }
-                }
-            }
-        }
-    } catch (e) {
-        console.error('Error procesando messageSnapshots:', e);
-    }
-
-    if (imageBuffers.length === 0 && message.attachments.size > 0) {
+    // 1. Revisar adjuntos directos
+    if (message.attachments.size > 0) {
         for (const [_, att] of message.attachments) {
             if (att.contentType?.startsWith('image/') || att.filename.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)) {
                 try {
                     const res = await fetch(att.url);
                     const buf = await res.buffer();
                     imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen.png' });
+                    console.log('> [Captura] Imagen encontrada en attachments.');
                 } catch (e) {
                     console.error('Error descargando adjunto:', e);
                 }
@@ -203,9 +182,10 @@ discordClient.on('messageCreate', async (message) => {
         }
     }
 
+    // 2. Revisar embeds (Captura las imágenes de los comandos tipo /pvp)
     if (imageBuffers.length === 0 && message.embeds.length > 0) {
         for (const embed of message.embeds) {
-            const imageUrl = embed.image?.url || embed.thumbnail?.url;
+            const imageUrl = embed.image?.url || embed.image?.proxyURL || embed.thumbnail?.url || embed.thumbnail?.proxyURL;
             if (imageUrl) {
                 try {
                     const res = await fetch(imageUrl);
@@ -213,6 +193,7 @@ discordClient.on('messageCreate', async (message) => {
                     imageBuffers.push({ buffer: buf, filename: 'imagen_embed.png' });
                     if (!content && embed.description) content = embed.description;
                     if (!content && embed.title) content = embed.title;
+                    console.log('> [Captura] Imagen encontrada dentro de un Embed.');
                 } catch (e) {
                     console.error('Error descargando imagen de embed:', e);
                 }
@@ -223,39 +204,9 @@ discordClient.on('messageCreate', async (message) => {
     const hasText = content && content.trim().length > 0;
     const hasImages = imageBuffers.length > 0;
 
+    console.log(`[DEBUG] ¿Tiene texto?: ${hasText} | ¿Tiene imágenes?: ${hasImages} (Total: ${imageBuffers.length})`);
+
     if (!hasImages && !hasText) return;
-
-    if (isScheduled) {
-        const scheduleRegex = /^\/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/;
-        const match = content.match(scheduleRegex);
-
-        if (match) {
-            const [, day, month, yearStr, hour, minute] = match;
-            const year = yearStr.length === 2 ? `20${yearStr}` : yearStr;
-            const targetDate = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}:00`);
-            const now = new Date();
-            const delay = targetDate.getTime() - now.getTime();
-
-            if (delay > 0) {
-                const cleanCaption = content.replace(scheduleRegex, '').trim();
-                try { await message.react('⏰'); } catch (e) {}
-                
-                if (isChannel1) {
-                    try { await message.delete(); } catch (e) {}
-                }
-
-                for (const imgData of imageBuffers) {
-                    setTimeout(async () => {
-                        await dispatchToTargets(imgData.buffer, imgData.filename, cleanCaption, targetWebhooks, targetWaGroups);
-                    }, delay);
-                }
-                return;
-            } else {
-                try { await message.react('❌'); } catch (e) {}
-                return;
-            }
-        }
-    }
 
     const rawCaption = content;
 
@@ -263,23 +214,24 @@ discordClient.on('messageCreate', async (message) => {
         for (const imgData of imageBuffers) {
             try {
                 await dispatchToTargets(imgData.buffer, imgData.filename, rawCaption, targetWebhooks, targetWaGroups);
+                console.log('> [Éxito] Imagen reenviada a los destinos.');
             } catch (err) { 
                 console.error('Error procesando imagen:', err); 
             }
         }
     } else if (hasText) {
         await dispatchToTargets(null, null, rawCaption, targetWebhooks, targetWaGroups);
+        console.log('> [Éxito] Texto reenviado a los destinos.');
     }
 
+    // BORRADO AUTOMÁTICO EN EL CANAL 1
     if (isChannel1) {
         try {
             await message.delete();
-            console.log('> [Discord] Mensaje original eliminado del Canal 1.');
+            console.log('> [Discord] Mensaje original (usuario o bot) eliminado con éxito del Canal 1.');
         } catch (err) {
-            console.error('Error al intentar eliminar el mensaje de Discord:', err);
+            console.error('Error al intentar eliminar el mensaje de Discord (verifica permisos "Manage Messages"):', err);
         }
-    } else {
-        console.log('> [Discord] Mensaje conservado en el Canal 2 (no se elimina).');
     }
 });
 
