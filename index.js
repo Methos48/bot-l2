@@ -100,12 +100,19 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
         try {
             const form = new FormData();
             if (buffer) {
-                form.append('file0', buffer, { filename: filename });
+                form.append('file0', buffer, { filename: filename || 'imagen.png' });
             }
             if (rawCaption) {
                 form.append('content', rawCaption);
+            } else if (buffer) {
+                form.append('content', '🎮 **Aviso / Imagen:**');
             }
-            await fetch(webhookUrl, { method: 'POST', body: form });
+            
+            await fetch(webhookUrl, { 
+                method: 'POST', 
+                body: form,
+                headers: form.getHeaders() 
+            });
         } catch (err) {
             console.error(`Error enviando al webhook de Discord:`, err);
         }
@@ -128,15 +135,20 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
 }
 
 discordClient.on('messageCreate', async (message) => {
-    console.log(`[DEBUG EXTREMO] ¡Mensaje capturado! Canal: ${message.channel.id} | Autor: ${message.author.tag}`);
+    console.log(`[DEBUG EXTREMO] ¡Mensaje capturado! Canal: ${message.channel.id} | Autor: ${message.author.tag} (${message.author.id})`);
 
     if (message.author.id === discordClient.user.id) return;
-    if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) return;
 
-    // IGNORAR COMANDOS QUE COMIENCEN CON / O !
+    // Filtro estricto de bots: Si es bot, SOLO se permite si su ID es exactamente ALLOWED_BOT_ID
+    if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) {
+        console.log(`> [Filtro] Bot ignorado: ${message.author.tag} (${message.author.id})`);
+        return;
+    }
+
+    // IGNORAR COMANDOS QUE COMIENCEN CON / O ! (EXCEPTO si es el bot permitido ejecutando comandos de barra que generan embeds)
     const contentCheck = message.content ? message.content.trim() : '';
-    if (contentCheck.startsWith('/') || contentCheck.startsWith('!')) {
-        console.log(`> [Filtro] Comando detectado y omitido: "${contentCheck}"`);
+    if (message.author.id !== ALLOWED_BOT_ID && (contentCheck.startsWith('/') || contentCheck.startsWith('!'))) {
+        console.log(`> [Filtro] Comando detectado y omitido de usuario: "${contentCheck}"`);
         return;
     }
 
@@ -193,12 +205,14 @@ discordClient.on('messageCreate', async (message) => {
 
     if (imageBuffers.length === 0 && message.embeds.length > 0) {
         for (const embed of message.embeds) {
-            if (embed.image && embed.image.url) {
+            const imageUrl = embed.image?.url || embed.thumbnail?.url;
+            if (imageUrl) {
                 try {
-                    const res = await fetch(embed.image.url);
+                    const res = await fetch(imageUrl);
                     const buf = await res.buffer();
-                    imageBuffers.push({ buffer: buf, filename: 'imagen_reenviada.png' });
+                    imageBuffers.push({ buffer: buf, filename: 'imagen_embed.png' });
                     if (!content && embed.description) content = embed.description;
+                    if (!content && embed.title) content = embed.title;
                 } catch (e) {
                     console.error('Error descargando imagen de embed:', e);
                 }
