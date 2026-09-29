@@ -34,7 +34,7 @@ const WA_GROUPS_2 = [
 
 const ALLOWED_BOT_ID = '1548524655076184104';
 
-// Memoria para evitar duplicados / bucles en reenvíos y borrados
+// Memoria para evitar duplicados en reenvíos y borrados
 const processedMessages = new Set();
 
 console.log('> [Sistema] Configurando cliente de Discord...');
@@ -140,8 +140,6 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
 
 async function processMessage(message) {
     if (!message || !message.id) return false;
-
-    // Si ya fue procesado y reenviado, lo ignoramos por completo
     if (processedMessages.has(message.id)) return false;
 
     if (message.author.id === discordClient.user.id) return false;
@@ -187,7 +185,7 @@ async function processMessage(message) {
         }
     }
 
-    // 2. Revisar embeds (imágenes de comandos slash como /pvp)
+    // 2. Revisar embeds (comandos como /pvp)
     if (imageBuffers.length === 0 && message.embeds.length > 0) {
         for (const embed of message.embeds) {
             const imageUrl = embed.image?.url || embed.image?.proxyURL || embed.thumbnail?.url || embed.thumbnail?.proxyURL;
@@ -205,15 +203,40 @@ async function processMessage(message) {
         }
     }
 
+    // 3. NUEVO: Detectar emojis personalizados de Discord en el texto (ej: <:AA:14267914555598313702> o animados <a:AA:id>)
+    const customEmojiRegex = /<(a)?:([a-zA-Z0-9_]+):([0-9]+)>/g;
+    let match;
+    let foundEmojis = [];
+    while ((match = customEmojiRegex.exec(content)) !== null) {
+        const isAnimated = match[1] === 'a';
+        const emojiName = match[2];
+        const emojiId = match[3];
+        const extension = isAnimated ? 'gif' : 'png';
+        const emojiUrl = `https://cdn.discordapp.com/emojis/${emojiId}.${extension}`;
+        
+        foundEmojis.push({ url: emojiUrl, name: emojiName, ext: extension });
+    }
+
+    if (foundEmojis.length > 0) {
+        for (const emoji of foundEmojis) {
+            try {
+                const res = await fetch(emoji.url);
+                const buf = await res.buffer();
+                imageBuffers.push({ buffer: buf, filename: `${emoji.name}.${emoji.ext}` });
+            } catch (e) {
+                console.error('Error descargando emoji personalizado:', e);
+            }
+        }
+        // Limpiamos el texto de los códigos de los emojis para que no aparezcan feos
+        content = content.replace(customEmojiRegex, '').trim();
+    }
+
     const hasText = content && content.trim().length > 0;
     const hasImages = imageBuffers.length > 0;
 
-    // Si todavía no tiene contenido ni imagen, salimos para que espere al messageUpdate
     if (!hasImages && !hasText) return false;
 
-    // Marcamos inmediatamente este ID como procesado para evitar duplicados
     processedMessages.add(message.id);
-    // Limpiamos la memoria cada 100 mensajes para no saturar RAM
     if (processedMessages.size > 100) {
         const firstItem = processedMessages.values().next().value;
         processedMessages.delete(firstItem);
@@ -225,7 +248,7 @@ async function processMessage(message) {
         for (const imgData of imageBuffers) {
             try {
                 await dispatchToTargets(imgData.buffer, imgData.filename, rawCaption, targetWebhooks, targetWaGroups);
-                console.log('> [Éxito] Imagen enviada a destinos.');
+                console.log('> [Éxito] Contenido con imagen/emoji enviado a destinos.');
             } catch (err) { 
                 console.error('Error procesando imagen:', err); 
             }
@@ -235,14 +258,14 @@ async function processMessage(message) {
         console.log('> [Éxito] Texto enviado a destinos.');
     }
 
-    // BORRADO AUTOMÁTICO EN EL CANAL 1 (Con un pequeño respiro de 500ms)
+    // Borrado automático en el Canal 1
     if (isChannel1) {
         setTimeout(async () => {
             try {
                 await message.delete();
                 console.log('> [Discord] Mensaje original eliminado correctamente del Canal 1.');
             } catch (err) {
-                console.error('Error al intentar eliminar el mensaje (¿Faltan permisos "Manage Messages"?):', err);
+                console.error('Error al intentar eliminar el mensaje:', err);
             }
         }, 500);
     }
