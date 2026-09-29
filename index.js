@@ -104,8 +104,6 @@ async function startWhatsApp() {
 async function fixEmojiImage(buffer) {
     try {
         const image = await Jimp.read(buffer);
-        // Si la imagen es muy pequeña (como un emoji de discord), la escalamos a un tamaño limpio manteniendo proporción
-        // o la ponemos sobre un lienzo cuadrado de 128x128 para que WhatsApp no la estire a la fuerza.
         const size = Math.max(image.getWidth(), image.getHeight());
         if (size < 128) {
             const background = new Jimp(128, 128, 0x00000000); // Lienzo transparente
@@ -116,7 +114,7 @@ async function fixEmojiImage(buffer) {
         return buffer;
     } catch (e) {
         console.error('Error procesando emoji con Jimp:', e);
-        return buffer; // Si falla, devuelve el original
+        return buffer;
     }
 }
 
@@ -195,7 +193,6 @@ async function processMessage(message) {
 
     let content = message.content || '';
     let imageBuffers = [];
-    let isEmojiMessage = false;
 
     // 1. Revisar adjuntos directos
     if (message.attachments.size > 0) {
@@ -245,7 +242,6 @@ async function processMessage(message) {
     }
 
     if (foundEmojis.length > 0) {
-        isEmojiMessage = true;
         for (const emoji of foundEmojis) {
             try {
                 const res = await fetch(emoji.url);
