@@ -34,6 +34,9 @@ const WA_GROUPS_2 = [
 
 const ALLOWED_BOT_ID = '1548524655076184104';
 
+// Memoria para evitar duplicados / bucles en reenvíos y borrados
+const processedMessages = new Set();
+
 console.log('> [Sistema] Configurando cliente de Discord...');
 const discordClient = new DiscordClient({
     intents: [
@@ -135,8 +138,12 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
     }
 }
 
-// Función centralizada para procesar y enviar el mensaje
 async function processMessage(message) {
+    if (!message || !message.id) return false;
+
+    // Si ya fue procesado y reenviado, lo ignoramos por completo
+    if (processedMessages.has(message.id)) return false;
+
     if (message.author.id === discordClient.user.id) return false;
 
     if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) {
@@ -201,10 +208,16 @@ async function processMessage(message) {
     const hasText = content && content.trim().length > 0;
     const hasImages = imageBuffers.length > 0;
 
-    console.log(`[PROCESAR] Canal: ${message.channel.id} | ¿Texto?: ${hasText} | ¿Imágenes?: ${hasImages} (${imageBuffers.length})`);
-
-    // Si aún no tiene imagen ni texto, retornamos false para que espere si es un mensaje en proceso de actualización
+    // Si todavía no tiene contenido ni imagen, salimos para que espere al messageUpdate
     if (!hasImages && !hasText) return false;
+
+    // Marcamos inmediatamente este ID como procesado para evitar duplicados
+    processedMessages.add(message.id);
+    // Limpiamos la memoria cada 100 mensajes para no saturar RAM
+    if (processedMessages.size > 100) {
+        const firstItem = processedMessages.values().next().value;
+        processedMessages.delete(firstItem);
+    }
 
     const rawCaption = content;
 
@@ -222,14 +235,16 @@ async function processMessage(message) {
         console.log('> [Éxito] Texto enviado a destinos.');
     }
 
-    // Borrado automático en el Canal 1
+    // BORRADO AUTOMÁTICO EN EL CANAL 1 (Con un pequeño respiro de 500ms)
     if (isChannel1) {
-        try {
-            await message.delete();
-            console.log('> [Discord] Mensaje original eliminado del Canal 1.');
-        } catch (err) {
-            console.error('Error al intentar eliminar el mensaje:', err);
-        }
+        setTimeout(async () => {
+            try {
+                await message.delete();
+                console.log('> [Discord] Mensaje original eliminado correctamente del Canal 1.');
+            } catch (err) {
+                console.error('Error al intentar eliminar el mensaje (¿Faltan permisos "Manage Messages"?):', err);
+            }
+        }, 500);
     }
 
     return true;
@@ -239,9 +254,7 @@ discordClient.on('messageCreate', async (message) => {
     await processMessage(message);
 });
 
-// Captura por si el mensaje llega vacío y Discord lo actualiza milisegundos después con el Embed/Imagen
 discordClient.on('messageUpdate', async (oldMessage, newMessage) => {
-    // Si newMessage es parcial, lo intentamos traer completo
     let msg = newMessage;
     if (newMessage.partial) {
         try {
