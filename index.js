@@ -286,7 +286,7 @@ async function processMessage(message) {
         setTimeout(async () => {
             try {
                 await message.delete();
-                console.log('> [Discord] Mensaje original eliminado correctamente del Canal 1.');
+                console.log('> [Discord] 메시지 original eliminado correctamente del Canal 1.');
             } catch (err) {
                 console.error('Error al intentar eliminar el mensaje:', err);
             }
