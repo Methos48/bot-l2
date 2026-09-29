@@ -45,8 +45,8 @@ const discordClient = new DiscordClient({
 
 discordClient.on('warn', info => console.log(`[DISCORD WARN] ${info}`));
 discordClient.on('error', error => console.error(`[DISCORD ERROR]`, error));
-discordClient.on('clientReady', () => console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`));
-discordClient.on('ready', () => console.log(`> [Discord] ¡Conectado exitosamente como ${discordClient.user.tag}!`));
+discordClient.on('clientReady', () => console.log('> [Discord] ¡Conectado exitosamente como ' + discordClient.user.tag + '!'));
+discordClient.on('ready', () => console.log('> [Discord] ¡Conectado exitosamente como ' + discordClient.user.tag + '!'));
 
 if (!DISCORD_BOT_TOKEN) {
     console.error('> [Error CRÍTICO] La variable DISCORD_BOT_TOKEN no está definida.');
@@ -135,25 +135,24 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
     }
 }
 
-discordClient.on('messageCreate', async (message) => {
-    console.log(`[DEBUG] Mensaje detectado | Canal: ${message.channel.id} | Autor ID: ${message.author.id} | Bot?: ${message.author.bot}`);
-
-    if (message.author.id === discordClient.user.id) return;
+// Función centralizada para procesar y enviar el mensaje
+async function processMessage(message) {
+    if (message.author.id === discordClient.user.id) return false;
 
     if (message.author.bot && message.author.id !== ALLOWED_BOT_ID) {
-        return;
+        return false;
     }
 
     const contentCheck = message.content ? message.content.trim() : '';
     if (message.author.id !== ALLOWED_BOT_ID && (contentCheck.startsWith('/') || contentCheck.startsWith('!'))) {
-        return;
+        return false;
     }
 
     const isChannel1 = CHANNEL_1 && message.channel.id === CHANNEL_1;
     const isChannel2 = CHANNEL_2 && message.channel.id === CHANNEL_2;
     const isScheduled = DISCORD_SCHEDULED_CHANNEL_ID && message.channel.id === DISCORD_SCHEDULED_CHANNEL_ID;
 
-    if (!isChannel1 && !isChannel2 && !isScheduled) return;
+    if (!isChannel1 && !isChannel2 && !isScheduled) return false;
     
     let targetWebhooks = WEBHOOKS_1;
     let targetWaGroups = WA_GROUPS_1;
@@ -174,7 +173,6 @@ discordClient.on('messageCreate', async (message) => {
                     const res = await fetch(att.url);
                     const buf = await res.buffer();
                     imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen.png' });
-                    console.log('> [Captura] Imagen encontrada en attachments.');
                 } catch (e) {
                     console.error('Error descargando adjunto:', e);
                 }
@@ -182,7 +180,7 @@ discordClient.on('messageCreate', async (message) => {
         }
     }
 
-    // 2. Revisar embeds (Captura las imágenes de los comandos tipo /pvp)
+    // 2. Revisar embeds (imágenes de comandos slash como /pvp)
     if (imageBuffers.length === 0 && message.embeds.length > 0) {
         for (const embed of message.embeds) {
             const imageUrl = embed.image?.url || embed.image?.proxyURL || embed.thumbnail?.url || embed.thumbnail?.proxyURL;
@@ -193,7 +191,6 @@ discordClient.on('messageCreate', async (message) => {
                     imageBuffers.push({ buffer: buf, filename: 'imagen_embed.png' });
                     if (!content && embed.description) content = embed.description;
                     if (!content && embed.title) content = embed.title;
-                    console.log('> [Captura] Imagen encontrada dentro de un Embed.');
                 } catch (e) {
                     console.error('Error descargando imagen de embed:', e);
                 }
@@ -204,9 +201,10 @@ discordClient.on('messageCreate', async (message) => {
     const hasText = content && content.trim().length > 0;
     const hasImages = imageBuffers.length > 0;
 
-    console.log(`[DEBUG] ¿Tiene texto?: ${hasText} | ¿Tiene imágenes?: ${hasImages} (Total: ${imageBuffers.length})`);
+    console.log(`[PROCESAR] Canal: ${message.channel.id} | ¿Texto?: ${hasText} | ¿Imágenes?: ${hasImages} (${imageBuffers.length})`);
 
-    if (!hasImages && !hasText) return;
+    // Si aún no tiene imagen ni texto, retornamos false para que espere si es un mensaje en proceso de actualización
+    if (!hasImages && !hasText) return false;
 
     const rawCaption = content;
 
@@ -214,25 +212,45 @@ discordClient.on('messageCreate', async (message) => {
         for (const imgData of imageBuffers) {
             try {
                 await dispatchToTargets(imgData.buffer, imgData.filename, rawCaption, targetWebhooks, targetWaGroups);
-                console.log('> [Éxito] Imagen reenviada a los destinos.');
+                console.log('> [Éxito] Imagen enviada a destinos.');
             } catch (err) { 
                 console.error('Error procesando imagen:', err); 
             }
         }
     } else if (hasText) {
         await dispatchToTargets(null, null, rawCaption, targetWebhooks, targetWaGroups);
-        console.log('> [Éxito] Texto reenviado a los destinos.');
+        console.log('> [Éxito] Texto enviado a destinos.');
     }
 
-    // BORRADO AUTOMÁTICO EN EL CANAL 1
+    // Borrado automático en el Canal 1
     if (isChannel1) {
         try {
             await message.delete();
-            console.log('> [Discord] Mensaje original (usuario o bot) eliminado con éxito del Canal 1.');
+            console.log('> [Discord] Mensaje original eliminado del Canal 1.');
         } catch (err) {
-            console.error('Error al intentar eliminar el mensaje de Discord (verifica permisos "Manage Messages"):', err);
+            console.error('Error al intentar eliminar el mensaje:', err);
         }
     }
+
+    return true;
+}
+
+discordClient.on('messageCreate', async (message) => {
+    await processMessage(message);
+});
+
+// Captura por si el mensaje llega vacío y Discord lo actualiza milisegundos después con el Embed/Imagen
+discordClient.on('messageUpdate', async (oldMessage, newMessage) => {
+    // Si newMessage es parcial, lo intentamos traer completo
+    let msg = newMessage;
+    if (newMessage.partial) {
+        try {
+            msg = await newMessage.fetch();
+        } catch (e) {
+            return;
+        }
+    }
+    await processMessage(msg);
 });
 
 startWhatsApp();
