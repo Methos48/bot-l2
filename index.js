@@ -100,16 +100,15 @@ async function startWhatsApp() {
     });
 }
 
-// Función auxiliar para normalizar emojis y evitar que WhatsApp los distorsione (Reescalado bicúbico nítido)
+// Función auxiliar para preparar el emoji en un tamaño pequeño y nítido (con fondo transparente)
 async function fixEmojiImage(buffer) {
     try {
         const image = await Jimp.read(buffer);
-        // Escalamos usando interpolación bicúbica de alta calidad para evitar bloques pixelados
-        image.scaleToFit(256, 256, Jimp.RESIZE_BICUBIC);
+        // Mantenemos el emoji en un tamaño compacto (ej. 128x128) con lienzo transparente
+        image.scaleToFit(120, 120, Jimp.RESIZE_BICUBIC);
         
-        // Creamos un fondo blanco limpio de 256x256 para mantener proporciones perfectas
-        const background = new Jimp(256, 256, 0xFFFFFFFF); 
-        background.composite(image, (256 - image.getWidth()) / 2, (256 - image.getHeight()) / 2);
+        const background = new Jimp(128, 128, 0x00000000); // Transparente puro
+        background.composite(image, (128 - image.getWidth()) / 2, (128 - image.getHeight()) / 2);
         
         return await background.getBufferAsync(Jimp.MIME_PNG);
     } catch (e) {
@@ -149,9 +148,21 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
     for (const waGroupId of waGroups) {
         try {
             if (finalBuffer) {
-                const waPayload = { image: finalBuffer };
-                if (rawCaption) waPayload.caption = rawCaption;
-                await waSocket.sendMessage(waGroupId, waPayload);
+                if (isEmoji) {
+                    // ENVIAR COMO DOCUMENTO: Evita que WhatsApp deforme, comprima o agrande el emoji feamente
+                    const waPayload = {
+                        document: finalBuffer,
+                        mimetype: 'image/png',
+                        fileName: filename || 'emoji.png'
+                    };
+                    if (rawCaption) waPayload.caption = rawCaption;
+                    await waSocket.sendMessage(waGroupId, waPayload);
+                } else {
+                    // Imágenes normales se envían como foto corriente
+                    const waPayload = { image: finalBuffer };
+                    if (rawCaption) waPayload.caption = rawCaption;
+                    await waSocket.sendMessage(waGroupId, waPayload);
+                }
             } else if (rawCaption) {
                 await waSocket.sendMessage(waGroupId, { text: rawCaption });
             }
