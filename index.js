@@ -100,18 +100,18 @@ async function startWhatsApp() {
     });
 }
 
-// Función auxiliar para normalizar emojis y evitar que WhatsApp los distorsione
+// Función auxiliar para normalizar emojis y evitar que WhatsApp los distorsione (Reescalado bicúbico nítido)
 async function fixEmojiImage(buffer) {
     try {
         const image = await Jimp.read(buffer);
-        const size = Math.max(image.getWidth(), image.getHeight());
-        if (size < 128) {
-            const background = new Jimp(128, 128, 0x00000000); // Lienzo transparente
-            image.scaleToFit(120, 120);
-            background.composite(image, (128 - image.getWidth()) / 2, (128 - image.getHeight()) / 2);
-            return await background.getBufferAsync(Jimp.MIME_PNG);
-        }
-        return buffer;
+        // Escalamos usando interpolación bicúbica de alta calidad para evitar bloques pixelados
+        image.scaleToFit(256, 256, Jimp.RESIZE_BICUBIC);
+        
+        // Creamos un fondo blanco limpio de 256x256 para mantener proporciones perfectas
+        const background = new Jimp(256, 256, 0xFFFFFFFF); 
+        background.composite(image, (256 - image.getWidth()) / 2, (256 - image.getHeight()) / 2);
+        
+        return await background.getBufferAsync(Jimp.MIME_PNG);
     } catch (e) {
         console.error('Error procesando emoji con Jimp:', e);
         return buffer;
@@ -286,7 +286,7 @@ async function processMessage(message) {
         setTimeout(async () => {
             try {
                 await message.delete();
-                console.log('> [Discord] 메시지 original eliminado correctamente del Canal 1.');
+                console.log('> [Discord] Mensaje original eliminado correctamente del Canal 1.');
             } catch (err) {
                 console.error('Error al intentar eliminar el mensaje:', err);
             }
