@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const FormData = require('form-data');
 const express = require('express');
 const pino = require('pino');
+const Jimp = require('jimp');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -99,16 +100,41 @@ async function startWhatsApp() {
     });
 }
 
-async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroups) {
+// Función auxiliar para normalizar emojis y evitar que WhatsApp los distorsione
+async function fixEmojiImage(buffer) {
+    try {
+        const image = await Jimp.read(buffer);
+        // Si la imagen es muy pequeña (como un emoji de discord), la escalamos a un tamaño limpio manteniendo proporción
+        // o la ponemos sobre un lienzo cuadrado de 128x128 para que WhatsApp no la estire a la fuerza.
+        const size = Math.max(image.getWidth(), image.getHeight());
+        if (size < 128) {
+            const background = new Jimp(128, 128, 0x00000000); // Lienzo transparente
+            image.scaleToFit(120, 120);
+            background.composite(image, (128 - image.getWidth()) / 2, (128 - image.getHeight()) / 2);
+            return await background.getBufferAsync(Jimp.MIME_PNG);
+        }
+        return buffer;
+    } catch (e) {
+        console.error('Error procesando emoji con Jimp:', e);
+        return buffer; // Si falla, devuelve el original
+    }
+}
+
+async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroups, isEmoji = false) {
+    let finalBuffer = buffer;
+    if (buffer && isEmoji) {
+        finalBuffer = await fixEmojiImage(buffer);
+    }
+
     for (const webhookUrl of webhooks) {
         try {
             const form = new FormData();
-            if (buffer) {
-                form.append('file0', buffer, { filename: filename || 'imagen.png' });
+            if (finalBuffer) {
+                form.append('file0', finalBuffer, { filename: filename || 'imagen.png' });
             }
             if (rawCaption) {
                 form.append('content', rawCaption);
-            } else if (buffer) {
+            } else if (finalBuffer) {
                 form.append('content', '🎮 **Aviso / Imagen:**');
             }
             
@@ -124,8 +150,8 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
 
     for (const waGroupId of waGroups) {
         try {
-            if (buffer) {
-                const waPayload = { image: buffer };
+            if (finalBuffer) {
+                const waPayload = { image: finalBuffer };
                 if (rawCaption) waPayload.caption = rawCaption;
                 await waSocket.sendMessage(waGroupId, waPayload);
             } else if (rawCaption) {
@@ -169,6 +195,7 @@ async function processMessage(message) {
 
     let content = message.content || '';
     let imageBuffers = [];
+    let isEmojiMessage = false;
 
     // 1. Revisar adjuntos directos
     if (message.attachments.size > 0) {
@@ -177,7 +204,7 @@ async function processMessage(message) {
                 try {
                     const res = await fetch(att.url);
                     const buf = await res.buffer();
-                    imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen.png' });
+                    imageBuffers.push({ buffer: buf, filename: att.filename || 'imagen.png', isEmoji: false });
                 } catch (e) {
                     console.error('Error descargando adjunto:', e);
                 }
@@ -193,7 +220,7 @@ async function processMessage(message) {
                 try {
                     const res = await fetch(imageUrl);
                     const buf = await res.buffer();
-                    imageBuffers.push({ buffer: buf, filename: 'imagen_embed.png' });
+                    imageBuffers.push({ buffer: buf, filename: 'imagen_embed.png', isEmoji: false });
                     if (!content && embed.description) content = embed.description;
                     if (!content && embed.title) content = embed.title;
                 } catch (e) {
@@ -203,7 +230,7 @@ async function processMessage(message) {
         }
     }
 
-    // 3. NUEVO: Detectar emojis personalizados de Discord en el texto (ej: <:AA:14267914555598313702> o animados <a:AA:id>)
+    // 3. Detectar emojis personalizados de Discord
     const customEmojiRegex = /<(a)?:([a-zA-Z0-9_]+):([0-9]+)>/g;
     let match;
     let foundEmojis = [];
@@ -218,16 +245,16 @@ async function processMessage(message) {
     }
 
     if (foundEmojis.length > 0) {
+        isEmojiMessage = true;
         for (const emoji of foundEmojis) {
             try {
                 const res = await fetch(emoji.url);
                 const buf = await res.buffer();
-                imageBuffers.push({ buffer: buf, filename: `${emoji.name}.${emoji.ext}` });
+                imageBuffers.push({ buffer: buf, filename: `${emoji.name}.${emoji.ext}`, isEmoji: true });
             } catch (e) {
                 console.error('Error descargando emoji personalizado:', e);
             }
         }
-        // Limpiamos el texto de los códigos de los emojis para que no aparezcan feos
         content = content.replace(customEmojiRegex, '').trim();
     }
 
@@ -247,14 +274,14 @@ async function processMessage(message) {
     if (hasImages) {
         for (const imgData of imageBuffers) {
             try {
-                await dispatchToTargets(imgData.buffer, imgData.filename, rawCaption, targetWebhooks, targetWaGroups);
-                console.log('> [Éxito] Contenido con imagen/emoji enviado a destinos.');
+                await dispatchToTargets(imgData.buffer, imgData.filename, rawCaption, targetWebhooks, targetWaGroups, imgData.isEmoji);
+                console.log('> [Éxito] Contenido enviado a destinos.');
             } catch (err) { 
                 console.error('Error procesando imagen:', err); 
             }
         }
     } else if (hasText) {
-        await dispatchToTargets(null, null, rawCaption, targetWebhooks, targetWaGroups);
+        await dispatchToTargets(null, null, rawCaption, targetWebhooks, targetWaGroups, false);
         console.log('> [Éxito] Texto enviado a destinos.');
     }
 
