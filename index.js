@@ -129,10 +129,9 @@ async function dispatchToTargets(buffer, filename, rawCaption, webhooks, waGroup
             if (finalBuffer) {
                 form.append('file0', finalBuffer, { filename: filename || 'imagen.png' });
             }
+            // MODIFICACIÓN: Se eliminó el texto por defecto '🎮 **Aviso / Imagen:**'
             if (rawCaption) {
                 form.append('content', rawCaption);
-            } else if (finalBuffer) {
-                form.append('content', '🎮 **Aviso / Imagen:**');
             }
             
             await fetch(webhookUrl, { 
